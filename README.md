@@ -164,4 +164,4 @@ labguide.example.toml
 
 ## License
 
-No license file is included yet.
+MIT. See `LICENSE`.
