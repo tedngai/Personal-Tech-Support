@@ -1,0 +1,17 @@
+[backend]
+base_url = "https://your-backend.example/v1"
+chat_path = "/chat/completions"
+models_path = "/models"
+model = "your-vision-model"
+api_key = ""
+timeout_seconds = 30.0
+temperature = 0.2
+max_tokens = 500
+system_prompt = "You are LabGuide, a concise troubleshooting assistant for software issues on lab computers. Use the screenshot and the user's message to explain what you see and provide short, numbered next steps."
+
+[capture]
+jpeg_quality = 80
+
+[session]
+max_history_turns = 6
+log_path = "logs/labguide-session.jsonl"

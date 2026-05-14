@@ -1,0 +1,34 @@
+# Secrets
+.env
+*.env
+labguide.toml
+
+# Virtual environments
+.venv/
+venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Runtime output
+logs/
+*.jsonl
+
+# Local docs and planning
+LabGuide-PRD.md
+
+# Generated local render artifacts
+tui-review*.svg
+pratt-lab-guide*.svg
