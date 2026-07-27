@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gzip
+import json
 from typing import Any
 from time import perf_counter
 
@@ -7,6 +9,7 @@ import httpx
 
 from labguide.config import BackendConfig
 from labguide.models import AnalyzeResult, CapturedScreenshot, HealthResult, Message
+from labguide.ui_outline import render_ui_outline
 
 
 class BackendError(RuntimeError):
@@ -21,12 +24,20 @@ class BackendClient:
         url = f"{self._config.base_url.rstrip('/')}{self._config.models_path}"
         try:
             async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                response = await client.get(url, headers=self._headers())
-                response.raise_for_status()
+                status, reason, raw = await _send(client, "GET", url, self._headers(), None)
         except httpx.HTTPError as exc:
             return HealthResult(reachable=False, detail=str(exc))
 
-        payload = response.json() if response.content else {}
+        if status >= 400:
+            return HealthResult(
+                reachable=False,
+                detail=_extract_error_message(status, reason, _decode_body(raw)),
+            )
+        try:
+            payload = json.loads(_decode_body(raw)) if raw else {}
+        except ValueError:
+            payload = {}
+
         model_ids = {
             item.get("id")
             for item in payload.get("data", [])
@@ -47,6 +58,7 @@ class BackendClient:
         message: str,
         screenshot: CapturedScreenshot | None,
         history: list[Message],
+        ui_max_text_chars: int = 10000,
     ) -> AnalyzeResult:
         url = f"{self._config.base_url.rstrip('/')}{self._config.chat_path}"
         payload = {
@@ -56,6 +68,7 @@ class BackendClient:
                 latest_message=message,
                 screenshot=screenshot,
                 history=history,
+                ui_max_text_chars=ui_max_text_chars,
             ),
         }
         if self._config.max_tokens is not None:
@@ -65,14 +78,17 @@ class BackendClient:
         started = perf_counter()
         try:
             async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                response = await client.post(url, json=payload, headers=self._headers())
-                response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise BackendError(_extract_error_message(exc.response)) from exc
+                status, reason, raw = await _send(client, "POST", url, self._headers(), payload)
         except httpx.HTTPError as exc:
             raise BackendError(str(exc)) from exc
 
-        payload = response.json()
+        if status >= 400:
+            raise BackendError(_extract_error_message(status, reason, _decode_body(raw)))
+        try:
+            payload = json.loads(_decode_body(raw))
+        except ValueError:
+            raise BackendError(f"Backend returned HTTP {status} with unreadable JSON.") from None
+
         answer = _extract_answer(payload)
         if not answer:
             raise BackendError("Backend response did not include assistant message content.")
@@ -87,17 +103,47 @@ class BackendClient:
         )
 
     def _headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
+        # Some gateways mislabel Content-Encoding; asking for identity keeps
+        # responses readable, and _decode_body sniffs gzip as a fallback.
+        headers = {"Content-Type": "application/json", "Accept-Encoding": "identity"}
         if self._config.api_key:
             headers["Authorization"] = f"Bearer {self._config.api_key}"
         return headers
 
 
-def _extract_error_message(response: httpx.Response) -> str:
+async def _send(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    json_payload: dict[str, Any] | None,
+) -> tuple[int, str, bytes]:
+    """Send one request and return (status, reason phrase, raw body).
+
+    Reads the raw stream so a mislabeled Content-Encoding can never crash
+    httpx's automatic decoder.
+    """
+    async with client.stream(method, url, json=json_payload, headers=headers) as response:
+        raw = b"".join([part async for part in response.aiter_raw()])
+        return response.status_code, response.reason_phrase, raw
+
+
+def _decode_body(raw: bytes) -> str:
+    """Decode a response body by content sniffing, not by header trust."""
+    if raw[:2] == b"\x1f\x8b":
+        try:
+            return gzip.decompress(raw).decode("utf-8", errors="replace")
+        except OSError:
+            pass
+    return raw.decode("utf-8", errors="replace")
+
+
+def _extract_error_message(status_code: int, reason: str, body_text: str) -> str:
+    fallback = f"Backend returned HTTP {status_code} {reason}.".strip()
     try:
-        payload = response.json()
+        payload = json.loads(body_text)
     except ValueError:
-        return f"Backend returned HTTP {response.status_code}."
+        return fallback
 
     detail = payload.get("detail")
     error = payload.get("error")
@@ -114,7 +160,7 @@ def _extract_error_message(response: httpx.Response) -> str:
         return str(detail)
     if error:
         return str(error)
-    return f"Backend returned HTTP {response.status_code}."
+    return fallback
 
 
 def _build_messages(
@@ -122,6 +168,7 @@ def _build_messages(
     latest_message: str,
     screenshot: CapturedScreenshot | None,
     history: list[Message],
+    ui_max_text_chars: int = 10000,
 ) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     if system_prompt.strip():
@@ -139,7 +186,7 @@ def _build_messages(
                 "content": [
                     {
                         "type": "text",
-                        "text": _build_user_prompt(latest_message, screenshot),
+                        "text": _build_user_prompt(latest_message, screenshot, ui_max_text_chars),
                     },
                     {
                         "type": "image_url",
@@ -153,8 +200,25 @@ def _build_messages(
     return messages
 
 
-def _build_user_prompt(message: str, screenshot: CapturedScreenshot) -> str:
+def _build_user_prompt(
+    message: str, screenshot: CapturedScreenshot, ui_max_text_chars: int = 10000
+) -> str:
     context = screenshot.context
+    if screenshot.target is not None and screenshot.ui is not None:
+        # Enriched window capture: one compact accessibility outline plus the
+        # image. Canonical UI JSON is never embedded alongside the outline.
+        outline = render_ui_outline(screenshot.ui, screenshot.target, ui_max_text_chars)
+        return "\n".join(
+            [
+                outline,
+                "",
+                "The attached screenshot shows this captured window.",
+                f"Captured at: {context.timestamp}",
+                "",
+                "User request:",
+                message,
+            ]
+        )
     return "\n".join(
         [
             "The attached screenshot shows the user's current screen.",

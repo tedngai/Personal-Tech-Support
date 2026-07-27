@@ -8,6 +8,12 @@ from pathlib import Path
 
 @dataclass(slots=True)
 class SessionLogEntry:
+    """Operational metadata only.
+
+    Never put screenshots, base64 images, UI text, field values, document
+    text, window titles, or canonical UI JSON in this entry.
+    """
+
     message: str
     success: bool
     latency_ms: int | None
@@ -15,6 +21,11 @@ class SessionLogEntry:
     model: str | None = None
     confidence: float | None = None
     error: str | None = None
+    capture_kind: str | None = None
+    target_app: str | None = None
+    ui_status: str | None = None
+    ui_node_count: int | None = None
+    ui_truncated: bool | None = None
 
 
 class SessionLogger:
