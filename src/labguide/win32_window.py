@@ -13,7 +13,24 @@ import sys
 from ctypes import wintypes
 from dataclasses import dataclass
 
-from labguide.models import TargetWindow
+from labguide.models import TargetWindow, WindowIdentityError
+
+__all__ = [
+    "WindowIdentityError",
+    "ensure_dpi_awareness",
+    "get_foreground_hwnd",
+    "get_console_hwnd",
+    "get_window_class_name",
+    "is_own_terminal",
+    "get_window_pid",
+    "get_window_title",
+    "get_process_name",
+    "get_window_bounds",
+    "WindowCandidate",
+    "select_window_below",
+    "get_window_below",
+    "freeze_target_window",
+]
 
 _DWMWA_EXTENDED_FRAME_BOUNDS = 9
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -58,18 +75,6 @@ if sys.platform == "win32":
         ctypes.POINTER(wintypes.DWORD),
     ]
     _kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
-
-
-class WindowIdentityError(RuntimeError):
-    """The frozen foreground window cannot be captured.
-
-    The reason is a category, never captured content: "closed", "minimized",
-    "zero_size", or "unavailable".
-    """
-
-    def __init__(self, reason: str) -> None:
-        self.reason = reason
-        super().__init__(reason)
 
 
 def ensure_dpi_awareness() -> None:

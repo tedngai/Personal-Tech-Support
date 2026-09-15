@@ -139,6 +139,10 @@ LabGuide sends the newest user turn as multimodal content with two variants.
   - latest user request
 - one `image_url` item containing a base64 data URL for the JPEG of that window
 
+The enriched shape is identical on Windows (UI Automation) and macOS
+(AXUIElement); platform adapters normalize accessibility roles into the same
+outline vocabulary, so the backend sees one contract.
+
 Example enriched text item:
 
 ```text

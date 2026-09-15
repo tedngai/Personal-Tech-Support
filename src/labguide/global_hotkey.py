@@ -11,11 +11,13 @@ import ctypes
 import sys
 import threading
 from ctypes import wintypes
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 
+from labguide.models import CaptureTrigger
 from labguide.win32_window import get_foreground_hwnd
+
+__all__ = ["CaptureTrigger", "HotkeyError", "parse_hotkey", "GlobalHotkeyListener"]
 
 _MOD_ALT = 0x0001
 _MOD_CONTROL = 0x0002
@@ -92,14 +94,6 @@ def parse_hotkey(chord: str) -> tuple[int, int]:
     else:
         raise ValueError(f"unknown hotkey key: {key!r}")
     return (modifiers, vk)
-
-
-@dataclass(frozen=True, slots=True)
-class CaptureTrigger:
-    """Foreground identity frozen at the hotkey event."""
-
-    hwnd: int
-    triggered_at: str
 
 
 class GlobalHotkeyListener:

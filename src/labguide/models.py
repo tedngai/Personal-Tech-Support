@@ -1,7 +1,32 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
+
+
+class WindowIdentityError(RuntimeError):
+    """The frozen target window cannot be captured.
+
+    The reason is a category, never captured content: "closed", "minimized",
+    "zero_size", or "unavailable".
+    """
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureTrigger:
+    """Foreground target identity frozen at the global-hotkey event.
+
+    ``hwnd`` is the platform-native window reference (Win32 HWND on Windows,
+    CGWindowID on macOS). It is opaque outside the platform adapter.
+    """
+
+    hwnd: int
+    triggered_at: str
 
 
 @dataclass(slots=True)
@@ -190,6 +215,9 @@ class CapturedScreenshot:
     byte_count: int
     target: TargetWindow | None = None
     ui: UISnapshot | None = None
+    # Unique per capture event. Used so a slow in-flight request can never
+    # clear a newer pending attachment by accident.
+    capture_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
 @dataclass(slots=True)

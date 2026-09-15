@@ -24,8 +24,12 @@ class BackendClient:
         url = f"{self._config.base_url.rstrip('/')}{self._config.models_path}"
         try:
             async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                status, reason, raw = await _send(client, "GET", url, self._headers(), None)
+                status, reason, raw = await _send(
+                    client, "GET", url, self._headers(), None, self._config.max_response_bytes
+                )
         except httpx.HTTPError as exc:
+            return HealthResult(reachable=False, detail=str(exc))
+        except BackendError as exc:
             return HealthResult(reachable=False, detail=str(exc))
 
         if status >= 400:
@@ -78,7 +82,9 @@ class BackendClient:
         started = perf_counter()
         try:
             async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                status, reason, raw = await _send(client, "POST", url, self._headers(), payload)
+                status, reason, raw = await _send(
+                    client, "POST", url, self._headers(), payload, self._config.max_response_bytes
+                )
         except httpx.HTTPError as exc:
             raise BackendError(str(exc)) from exc
 
@@ -117,15 +123,24 @@ async def _send(
     url: str,
     headers: dict[str, str],
     json_payload: dict[str, Any] | None,
+    max_response_bytes: int = 8_000_000,
 ) -> tuple[int, str, bytes]:
     """Send one request and return (status, reason phrase, raw body).
 
     Reads the raw stream so a mislabeled Content-Encoding can never crash
-    httpx's automatic decoder.
+    httpx's automatic decoder. The body is bounded by max_response_bytes.
     """
     async with client.stream(method, url, json=json_payload, headers=headers) as response:
-        raw = b"".join([part async for part in response.aiter_raw()])
-        return response.status_code, response.reason_phrase, raw
+        chunks: list[bytes] = []
+        total = 0
+        async for part in response.aiter_raw():
+            total += len(part)
+            if max_response_bytes > 0 and total > max_response_bytes:
+                raise BackendError(
+                    f"Backend response exceeded the {max_response_bytes}-byte limit."
+                )
+            chunks.append(part)
+        return response.status_code, response.reason_phrase, b"".join(chunks)
 
 
 def _decode_body(raw: bytes) -> str:

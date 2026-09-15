@@ -149,12 +149,14 @@ class _Probe:
             return _SKIP_SUBTREE
 
         control_type = _short_control_type(str(_safe(lambda: control.ControlTypeName, "Unknown") or "Unknown"))
-        is_password = bool(
-            _safe(lambda: control.GetPropertyValue(_property("IsPasswordProperty")), False)
+        password_prop = _safe(
+            lambda: control.GetPropertyValue(_property("IsPasswordProperty")), None
         )
-        if is_password:
+        if password_prop is None or bool(password_prop):
             # Emit only a redacted marker. Never read Name, values, or text
-            # patterns from a password control.
+            # patterns from a password control. When the IsPassword property
+            # cannot be read at all, treat the control as sensitive rather
+            # than risk collecting a secret.
             return UIElement(depth=depth, control_type=control_type, is_password=True)
 
         name = _none_if_empty(_safe(lambda: control.Name))

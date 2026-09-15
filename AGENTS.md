@@ -7,10 +7,12 @@ personal technical-support client. Prioritize a small, reliable, privacy-aware
 support loop over broad automation. Build and verify changes end to end rather
 than stopping at scaffolding.
 
-The active feature initiative is AppShot-style Windows UI context capture. Read
-these documents before changing that area:
+The active feature initiative is AppShot-style UI context capture, now spanning
+Windows and macOS (Linux deferred). Read these documents before changing that
+area:
 
 - `docs/UI-Context-Capture-Execution-Plan.md`
+- `docs/Cross-Platform-Execution-Plan.md`
 - `docs/Windows-UI-Context-Architecture.md`
 - `docs/Backend-API-Spec.md`
 
@@ -64,7 +66,7 @@ completed and verified.
 ## Code Organization
 
 - `src/labguide/app.py`: Textual UI, workers, and pending-capture lifecycle
-- `src/labguide/capture.py`: image capture and encoding
+- `src/labguide/capture.py`: image capture, encoding, and size limits
 - `src/labguide/client.py`: backend payload and response handling
 - `src/labguide/config.py`: TOML/environment configuration
 - `src/labguide/models.py`: platform-neutral data models
@@ -73,7 +75,16 @@ completed and verified.
 - `src/labguide/ui_probe.py`: isolated, read-only UIA probe (Windows only)
 - `src/labguide/ui_outline.py`: pure outline projection, truncation, redaction
 - `src/labguide/win32_window.py`: Win32 window identity, bounds, z-order
+- `src/labguide/platforms/`: adapter contract plus per-OS adapters
+  - `contracts.py`: capabilities, adapter protocol, unsupported fallback
+  - `windows/`: wraps the Win32 modules behind the contract
+  - `macos/`: CGWindowList identity, ScreenCaptureKit capture, isolated
+    AXUIElement probe, pynput hotkey, TCC permission checks (macOS only)
 - `tests/`: pure unit tests; no display, UIA, or backend required
+
+The app consumes `get_adapter()` and `PlatformCapabilities`; keep OS API calls
+inside the adapters. macOS-only imports (PyObjC, pynput) must stay lazy so the
+package imports cleanly on Windows.
 
 Keep Windows API code behind narrow adapters. Keep model formatting and
 truncation pure so they can be tested without Windows UI Automation.

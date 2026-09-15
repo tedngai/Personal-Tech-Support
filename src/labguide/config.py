@@ -23,6 +23,9 @@ class BackendConfig:
     timeout_seconds: float = 30.0
     temperature: float = 0.2
     max_tokens: int | None = 500
+    # Hard cap on a backend response body, in bytes. Responses are buffered
+    # raw to sniff mislabeled Content-Encoding, so they must be bounded.
+    max_response_bytes: int = 8_000_000
     system_prompt: str = (
         "You are LabGuide, a concise troubleshooting assistant for software issues on lab computers. "
         "Use the screenshot, any provided accessibility text, and the user's message to explain what you see "
@@ -37,6 +40,9 @@ class BackendConfig:
 @dataclass(slots=True)
 class CaptureConfig:
     jpeg_quality: int = 80
+    # Image size limits, enforced before request construction. Zero disables.
+    jpeg_max_dimension: int = 2560
+    jpeg_max_bytes: int = 2_000_000
     ui_enabled: bool = False
     ui_timeout_seconds: float = 3.0
     ui_max_nodes: int = 500
@@ -80,10 +86,17 @@ def load_config(config_path: Path | None = None) -> AppConfig:
             timeout_seconds=float(backend.get("timeout_seconds", backend_defaults.timeout_seconds)),
             temperature=float(backend.get("temperature", backend_defaults.temperature)),
             max_tokens=_read_max_tokens(backend),
+            max_response_bytes=int(
+                backend.get("max_response_bytes", backend_defaults.max_response_bytes)
+            ),
             system_prompt=backend.get("system_prompt", backend_defaults.system_prompt),
         ),
         capture=CaptureConfig(
             jpeg_quality=int(capture.get("jpeg_quality", capture_defaults.jpeg_quality)),
+            jpeg_max_dimension=int(
+                capture.get("jpeg_max_dimension", capture_defaults.jpeg_max_dimension)
+            ),
+            jpeg_max_bytes=int(capture.get("jpeg_max_bytes", capture_defaults.jpeg_max_bytes)),
             ui_enabled=_read_bool(capture, "ui_enabled", capture_defaults.ui_enabled),
             ui_timeout_seconds=float(capture.get("ui_timeout_seconds", capture_defaults.ui_timeout_seconds)),
             ui_max_nodes=int(capture.get("ui_max_nodes", capture_defaults.ui_max_nodes)),

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from pathlib import Path
 
 from textual import work
@@ -10,28 +9,25 @@ from textual.binding import Binding
 from textual.containers import Center, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Input, Static
 
-from labguide.capture import CaptureError, capture_primary_display, capture_window_region
+from labguide.capture import CaptureError, capture_primary_display
 from labguide.client import BackendClient, BackendError
 from labguide.config import AppConfig, load_config
-from labguide.global_hotkey import CaptureTrigger, GlobalHotkeyListener, HotkeyError
+from labguide.global_hotkey import HotkeyError
 from labguide.models import (
     UI_STATUS_COMPLETE,
+    UI_STATUS_FAILED,
     UI_STATUS_PARTIAL,
     AnalyzeResult,
+    CaptureTrigger,
     CapturedScreenshot,
     HealthResult,
     Message,
-)
-from labguide.session_log import SessionLogEntry, SessionLogger
-from labguide.ui_probe import run_ui_probe
-from labguide.win32_window import (
+    UISnapshot,
     WindowIdentityError,
-    ensure_dpi_awareness,
-    freeze_target_window,
-    get_foreground_hwnd,
-    get_window_below,
-    is_own_terminal,
 )
+from labguide.platforms import get_adapter
+from labguide.platforms.contracts import HotkeyListener
+from labguide.session_log import SessionLogEntry, SessionLogger
 
 
 BANNER = "\n".join(
@@ -150,6 +146,8 @@ class LabGuideApp(App[None]):
 
     BINDINGS = [
         Binding("ctrl+s", "send_prompt", "Send with screenshot"),
+        Binding("ctrl+shift+d", "discard_capture", "Discard capture"),
+        Binding("ctrl+l", "clear_conversation", "Clear conversation"),
         Binding("ctrl+c", "quit", "Quit"),
     ]
 
@@ -160,14 +158,16 @@ class LabGuideApp(App[None]):
         self.config: AppConfig = load_config(config_path)
         self.backend = BackendClient(self.config.backend)
         self.session_logger = SessionLogger(self.config.session.log_path)
+        self.adapter = get_adapter()
+        self._capabilities = self.adapter.capabilities()
         self.history: list[Message] = []
         self.request_in_flight = False
         self.pending_capture: CapturedScreenshot | None = None
-        self._hotkey_listener: GlobalHotkeyListener | None = None
+        self._hotkey_listener: HotkeyListener | None = None
 
     @property
     def _ui_capture_active(self) -> bool:
-        return self.config.capture.ui_enabled and sys.platform == "win32"
+        return self.config.capture.ui_enabled and self._capabilities.global_hotkey
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="scroll"):
@@ -180,7 +180,10 @@ class LabGuideApp(App[None]):
     def _hint_text(self) -> str:
         if self._ui_capture_active:
             hotkey = self.config.capture.global_hotkey
-            return f"Enter send (+pending) | Ctrl+S capture window+send | {hotkey} capture in app | Ctrl+C quit"
+            return (
+                f"Enter send (+pending) | Ctrl+S capture window+send | {hotkey} capture in app "
+                "| Ctrl+Shift+D discard | Ctrl+C quit"
+            )
         return "Ctrl+S capture+send | Ctrl+C quit"
 
     async def on_mount(self) -> None:
@@ -217,8 +220,7 @@ class LabGuideApp(App[None]):
     def _start_hotkey_listener(self) -> None:
         hotkey = self.config.capture.global_hotkey
         try:
-            listener = GlobalHotkeyListener(hotkey, self._on_hotkey_from_thread)
-            listener.start()
+            listener = self.adapter.start_hotkey_listener(hotkey, self._on_hotkey_from_thread)
         except (HotkeyError, ValueError) as exc:
             self._append_message(
                 "error",
@@ -240,7 +242,7 @@ class LabGuideApp(App[None]):
     def _handle_capture_trigger(self, trigger: CaptureTrigger) -> None:
         if not trigger.hwnd:
             return
-        if is_own_terminal(trigger.hwnd):
+        if self.adapter.is_own_terminal(trigger.hwnd):
             self._append_message(
                 "system",
                 "Capture ignored: the terminal is in front. Press the hotkey while the problem app is in front.",
@@ -271,22 +273,22 @@ class LabGuideApp(App[None]):
         return self._capture_hwnd(trigger.hwnd)
 
     def _capture_hwnd(self, hwnd: int) -> CapturedScreenshot:
-        """Freeze identity, grab pixels, then probe UIA. Runs off the UI thread.
+        """Freeze identity, grab pixels, then probe accessibility. Off the UI thread.
 
-        Pixels come first because they are time-sensitive; UIA can be slow.
+        Pixels come first because they are time-sensitive; accessibility
+        extraction can be slow. An unexpected probe failure degrades to a
+        screenshot-only capture instead of losing the pixels.
         """
         capture_config = self.config.capture
-        target = freeze_target_window(hwnd)
-        screenshot = capture_window_region(
-            target.x, target.y, target.width, target.height, capture_config.jpeg_quality
-        )
-        ui_snapshot = run_ui_probe(
-            hwnd,
-            timeout_seconds=capture_config.ui_timeout_seconds,
-            max_nodes=capture_config.ui_max_nodes,
-            max_depth=capture_config.ui_max_depth,
-            include_offscreen=capture_config.ui_include_offscreen,
-        )
+        target = self.adapter.freeze_target(hwnd)
+        screenshot = self.adapter.capture_target(target, capture_config)
+        try:
+            ui_snapshot = self.adapter.probe_accessibility(target, capture_config)
+        except Exception:
+            ui_snapshot = UISnapshot(
+                status=UI_STATUS_FAILED,
+                warnings=["accessibility probe failed unexpectedly"],
+            )
         screenshot.target = target
         screenshot.ui = ui_snapshot
         return screenshot
@@ -297,14 +299,19 @@ class LabGuideApp(App[None]):
         When the terminal is foreground, the window below it in z-order is
         usually the app the user just came from. Runs off the UI thread.
         """
-        if self._ui_capture_active:
-            below = get_window_below(get_foreground_hwnd())
+        if self._ui_capture_active and self._capabilities.window_capture:
+            below = self.adapter.get_window_below(self.adapter.get_foreground_target())
             if below:
                 try:
                     return self._capture_hwnd(below)
                 except (WindowIdentityError, CaptureError):
                     pass  # Fall through to the primary-display fallback.
-        return capture_primary_display(self.config.capture.jpeg_quality)
+        capture_config = self.config.capture
+        return capture_primary_display(
+            capture_config.jpeg_quality,
+            max_dimension=capture_config.jpeg_max_dimension,
+            max_bytes=capture_config.jpeg_max_bytes,
+        )
 
     # ------------------------------------------------------------------
     # Prompt submission
@@ -357,9 +364,9 @@ class LabGuideApp(App[None]):
         except BackendError as exc:
             # The pending capture is retained for retry after backend errors.
             self._append_message("error", str(exc))
+            self._restore_prompt_after_failure(prompt)
             self.session_logger.write(
                 SessionLogEntry(
-                    message=prompt,
                     success=False,
                     latency_ms=None,
                     backend_url=self.config.backend.base_url,
@@ -369,9 +376,9 @@ class LabGuideApp(App[None]):
             )
         except Exception as exc:
             self._append_message("error", f"Unexpected error: {exc}")
+            self._restore_prompt_after_failure(prompt)
             self.session_logger.write(
                 SessionLogEntry(
-                    message=prompt,
                     success=False,
                     latency_ms=None,
                     backend_url=self.config.backend.base_url,
@@ -382,11 +389,11 @@ class LabGuideApp(App[None]):
         else:
             self._handle_success(prompt, result)
             if used_pending_capture:
-                # Cleared only after a successful send.
-                self.pending_capture = None
+                # Cleared only after a successful send, and only if the user
+                # has not captured something newer while we were waiting.
+                self._maybe_clear_pending(screenshot)
             self.session_logger.write(
                 SessionLogEntry(
-                    message=prompt,
                     success=True,
                     latency_ms=result.latency_ms,
                     backend_url=self.config.backend.base_url,
@@ -401,13 +408,49 @@ class LabGuideApp(App[None]):
             input_widget.disabled = False
             input_widget.focus()
 
+    def _maybe_clear_pending(self, submitted: CapturedScreenshot) -> bool:
+        """Clear the pending capture only if it is the one we just sent."""
+        if self.pending_capture is not None and self.pending_capture.capture_id == submitted.capture_id:
+            self.pending_capture = None
+            return True
+        return False
+
+    def _restore_prompt_after_failure(self, prompt: str) -> None:
+        """Put the failed prompt back if the user has not typed something new."""
+        input_widget = self.query_one("#prompt", Input)
+        if not input_widget.value.strip():
+            input_widget.value = prompt
+
     def _recent_history(self) -> list[Message]:
-        return self.history[-self.config.session.max_history_turns :]
+        # max_history_turns counts user/assistant pairs, not raw messages.
+        return self.history[-(self.config.session.max_history_turns * 2) :]
 
     def _handle_success(self, prompt: str, result: AnalyzeResult) -> None:
         self._append_message("assistant", result.answer)
         self.history.append(Message(role="user", content=prompt))
         self.history.append(Message(role="assistant", content=result.answer))
+        # Bound in-memory history so long sessions do not grow without limit.
+        max_messages = self.config.session.max_history_turns * 4
+        if len(self.history) > max_messages:
+            del self.history[: len(self.history) - max_messages]
+
+    # ------------------------------------------------------------------
+    # Conversation and attachment actions
+    # ------------------------------------------------------------------
+
+    def action_discard_capture(self) -> None:
+        if self.pending_capture is None:
+            self._append_message("system", "No pending capture to discard.")
+            return
+        self.pending_capture = None
+        self._append_message("system", "Pending capture discarded.")
+
+    def action_clear_conversation(self) -> None:
+        self.history.clear()
+        conversation = self.query_one("#conversation", Vertical)
+        conversation.remove_children()
+        self._append_banner()
+        self._append_message("system", "Conversation cleared.")
 
     # ------------------------------------------------------------------
     # Transcript
@@ -510,5 +553,5 @@ def _capture_log_fields(
 
 
 def run() -> None:
-    ensure_dpi_awareness()
+    get_adapter().ensure_ready()
     LabGuideApp().run()
