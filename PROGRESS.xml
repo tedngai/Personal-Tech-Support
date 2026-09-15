@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<progress project="Pratt Lab Guide" updated="2026-09-15">
+  <summary>
+    Cross-platform initiative (Windows + macOS, Linux deferred). Phases 1-5
+    implemented and unit-tested on Windows. The macOS adapter is implemented
+    but has never run on a Mac; interactive validation on macOS Tahoe is the
+    single next action before the feature can be called complete.
+  </summary>
+
+  <current-state>
+    <tests total="82" passing="82" platform="windows"/>
+    <commit ref="a53bd82" branch="main" pushed="true"/>
+    <platform name="windows" status="implemented">
+      <note>Adapter wraps existing Win32 modules; behavior unchanged.</note>
+    </platform>
+    <platform name="macos" status="implemented-unvalidated">
+      <note>
+        All macOS code is new and untested on hardware: CGWindowList identity,
+        ScreenCaptureKit capture, AXUIElement probe, pynput hotkey, TCC checks.
+        PyObjC/pynput dependencies are declared but not yet installed anywhere.
+      </note>
+    </platform>
+    <platform name="linux" status="deferred">
+      <note>UnsupportedAdapter: text-only + primary screenshot fallback.</note>
+    </platform>
+  </current-state>
+
+  <next-actions>
+    <action id="1" priority="highest" platform="macos">
+      <title>Interactive macOS validation on a Tahoe machine</title>
+      <details>
+        Run the 14-row acceptance matrix in
+        docs/Cross-Platform-Execution-Plan.md ("macOS Validation Matrix").
+        Setup: python3 -m venv .venv; pip install -e .; grant Screen
+        Recording and Accessibility to the terminal; set ui_enabled = true.
+        Smoke probes first:
+          python -m labguide.platforms.macos.ax_probe --pid &lt;pid&gt;
+          python -m labguide.platforms.macos.ax_probe --help
+        Then the full TUI flow: hotkey capture in TextEdit, return to
+        LabGuide, submit with backend.
+      </details>
+      <on-completion>
+        Check off matrix rows in docs/Cross-Platform-Execution-Plan.md, flip
+        Phase 4 "Interactive validation" to done, update this file.
+      </on-completion>
+    </action>
+    <action id="2" priority="high" platform="macos">
+      <title>Fix whatever the validation matrix breaks</title>
+      <details>
+        Likely first-failure candidates (untested code paths):
+        PyObjC ScreenCaptureKit completion-handler bridging, AX attribute
+        names/types, pynput chord mapping, Retina point-vs-pixel geometry
+        alignment between AX bounds and screenshot pixels.
+      </details>
+    </action>
+    <action id="3" priority="medium" platform="windows">
+      <title>Windows interactive regression pass</title>
+      <details>
+        Confirm the adapter refactor changed nothing: existing matrix in
+        docs/UI-Context-Capture-Execution-Plan.md (Notepad, error dialog,
+        browser, elevated app, UIA timeout, secondary monitor).
+      </details>
+    </action>
+    <action id="4" priority="low" platform="windows">
+      <title>Windows Graphics Capture for true window contents</title>
+      <details>
+        Windows window capture still crops the visible desktop, so
+        overlapping windows can appear in the screenshot. macOS already has
+        true window capture via ScreenCaptureKit. Deferred future work;
+        listed in the execution plan's Deferred section.
+      </details>
+    </action>
+  </next-actions>
+
+  <key-documents>
+    <doc path="docs/Cross-Platform-Execution-Plan.md" role="status, decisions, macOS validation matrix"/>
+    <doc path="docs/UI-Context-Capture-Execution-Plan.md" role="Windows feature status and matrix"/>
+    <doc path="docs/Windows-UI-Context-Architecture.md" role="durable design and data contracts"/>
+    <doc path="docs/Backend-API-Spec.md" role="OpenAI-compatible payload contract"/>
+    <doc path="AGENTS.md" role="engineering rules, invariants, code map"/>
+  </key-documents>
+
+  <invariants>
+    <invariant>Capture creates a local pending attachment; only explicit submit sends data.</invariant>
+    <invariant>Password/secure controls are redacted before serialization or logging.</invariant>
+    <invariant>Accessibility extraction runs in a child process with a parent-enforced hard timeout.</invariant>
+    <invariant>Screenshot-only and text-only paths must survive any accessibility failure.</invariant>
+    <invariant>OS API calls stay inside labguide.platforms adapters; PyObjC/pynput imports stay lazy.</invariant>
+    <invariant>Image and response size limits are enforced before request construction.</invariant>
+  </invariants>
+</progress>

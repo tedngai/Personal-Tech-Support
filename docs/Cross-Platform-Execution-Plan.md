@@ -115,10 +115,24 @@ Tahoe machine.
 
 ## Verification Commands
 
-```powershell
+Any platform:
+
+```bash
 python -m unittest discover -s tests
-python -m labguide.ui_probe --help
-python -m labguide.platforms.macos.ax_probe --help
+python -m labguide.ui_probe --help                     # Windows UIA probe
+python -m labguide.platforms.macos.ax_probe --help     # macOS AX probe
+python -m labguide
+```
+
+macOS first-run setup (Tahoe):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+# Grant Screen Recording and Accessibility to the terminal app, restart it,
+# then set ui_enabled = true in labguide.toml.
+python -m labguide.platforms.macos.ax_probe --pid <pid>   # probe smoke test
 python -m labguide
 ```
 

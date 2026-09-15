@@ -30,18 +30,28 @@ The app runs on Windows and macOS through a small platform-adapter layer. It is 
 
 ### 1. Create and activate a virtual environment
 
-PowerShell:
+Windows (PowerShell):
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
+macOS (Terminal):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
 ### 2. Install the project
 
-```powershell
+```bash
 pip install -e .
 ```
+
+On macOS this also installs the PyObjC ScreenCaptureKit/Accessibility
+bindings and pynput used by the macOS adapter.
 
 ## Configuration
 
@@ -204,14 +214,16 @@ review; `Ctrl+S` capture works regardless.
 
 ## Development Notes
 
+- **Current work status and next actions live in `PROGRESS.xml`** (machine-readable) and `docs/Cross-Platform-Execution-Plan.md`. The macOS adapter is implemented but pending interactive validation on a Tahoe machine — start there if you are picking up this work.
 - The repo ignores local secrets and runtime artifacts such as `.env`, `labguide.toml`, `.venv`, logs, and generated caches.
 - `LabGuide-PRD.md` is kept out of version control for this repo snapshot.
 - The title screen banner is currently hand-authored block text in `src/labguide/app.py`.
 - Run the test suite (pure unit tests; no display or UIA required):
 
-```powershell
+```bash
 python -m unittest discover -s tests
-python -m labguide.ui_probe --help
+python -m labguide.ui_probe --help                        # Windows UIA probe
+python -m labguide.platforms.macos.ax_probe --help        # macOS AX probe
 ```
 
 ## Troubleshooting

@@ -11,13 +11,24 @@ The active feature initiative is AppShot-style UI context capture, now spanning
 Windows and macOS (Linux deferred). Read these documents before changing that
 area:
 
+- `PROGRESS.xml` — machine-readable current state and next actions; start here
 - `docs/UI-Context-Capture-Execution-Plan.md`
 - `docs/Cross-Platform-Execution-Plan.md`
 - `docs/Windows-UI-Context-Architecture.md`
 - `docs/Backend-API-Spec.md`
 
-Update the execution-plan checkboxes and status when milestones are actually
-completed and verified.
+Update the execution-plan checkboxes, `PROGRESS.xml`, and status when
+milestones are actually completed and verified.
+
+## Current Priority
+
+The macOS adapter (`src/labguide/platforms/macos/`) is implemented but has
+never run on a Mac. The next action is interactive validation on a macOS Tahoe
+machine using the 14-row matrix in `docs/Cross-Platform-Execution-Plan.md`,
+then fixing what it breaks. Likely first-failure candidates: PyObjC
+ScreenCaptureKit completion-handler bridging, AX attribute names/types, pynput
+chord mapping, and Retina point-vs-pixel alignment between AX bounds and
+screenshot pixels. See `PROGRESS.xml` for the full action list.
 
 ## Product Boundaries
 
