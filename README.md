@@ -140,11 +140,18 @@ python -m labguide
 ## Controls
 
 - `Enter`: send the typed message, with the pending window capture if one exists
+- `Shift+Enter` / `Alt+Enter` / `Ctrl+J`: insert a newline in the composer
 - `Ctrl+S`: capture the window below LabGuide's terminal (the app you were just in) and send immediately; falls back to the primary display when no such window exists or when `capture.ui_enabled = false`
 - `Ctrl+Shift+Space` (configurable, only when `capture.ui_enabled = true`): capture the foreground window and its accessibility text as a pending attachment — press it while the problem app is in front, then return to LabGuide
 - `Ctrl+Shift+D`: discard the pending capture
 - `Ctrl+L`: clear the conversation and in-memory history
-- `Ctrl+C`: quit the app
+- `Ctrl+C`: quit the app (the footer shows all bound keys)
+
+Assistant answers render as markdown. A status line above the composer shows
+backend state, the active model, a pending-capture indicator, and a thinking
+spinner; all colors come from the `labguide-dark` theme tokens in
+`src/labguide/theme.py`. Truecolor themes require a truecolor terminal such as
+Windows Terminal.
 
 A pending window capture is replaced by the next successful capture, kept if a
 send fails, and cleared after a successful send — and only if no newer capture
@@ -190,6 +197,9 @@ src/labguide/
   global_hotkey.py  Win32 global hotkey adapter (Windows only)
   models.py         Dataclasses for requests, capture targets, and UI snapshots
   session_log.py    Local JSONL session logging (metadata only, no content)
+  theme.py          Color tokens (single Textual theme; styles use only $vars)
+  labguide.tcss     Textual stylesheet (token references only, no literal colors)
+  widgets.py        Transcript widgets (border-bar roles, markdown answers) and composer
   ui_outline.py     Pure rendering of UI snapshots into a compact text outline
   ui_probe.py       Isolated read-only UI Automation probe (Windows only)
   win32_window.py   Win32 foreground-window identity and bounds (Windows only)

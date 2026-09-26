@@ -1,0 +1,109 @@
+Screen {
+    layout: vertical;
+    background: $background;
+    color: $foreground;
+}
+
+#scroll {
+    height: 1fr;
+    padding: 1 2 0 2;
+}
+
+#conversation {
+    height: auto;
+}
+
+.msg {
+    height: auto;
+    margin-bottom: 1;
+    padding: 0 1;
+    border-left: thick $bar-system;
+}
+
+.user-msg {
+    color: $msg-user;
+    border-left: thick $bar-user;
+}
+
+.assistant-msg {
+    color: $msg-assistant;
+    border-left: thick $bar-assistant;
+}
+
+.capture-msg {
+    color: $msg-capture;
+    border-left: thick $bar-capture;
+}
+
+.system-msg {
+    color: $msg-system;
+    border-left: thick $bar-system;
+}
+
+.error-msg {
+    color: $error;
+    border-left: thick $bar-error;
+}
+
+Markdown {
+    height: auto;
+    padding: 0;
+}
+
+MarkdownBlock {
+    padding: 0 1;
+    margin: 0;
+}
+
+.banner-msg {
+    width: auto;
+    color: $primary;
+    padding: 1 0 2 0;
+}
+
+.banner-wrap {
+    width: 1fr;
+    height: auto;
+    margin-bottom: 1;
+    padding: 0;
+    border-left: none;
+}
+
+#status-bar {
+    height: 1;
+    padding: 0 2;
+    color: $muted;
+}
+
+#bar {
+    height: auto;
+    border-top: solid $rule;
+    padding: 0 2;
+}
+
+#prompt-prefix {
+    width: auto;
+    color: $faint;
+    padding: 1 1 1 0;
+}
+
+#prompt {
+    width: 1fr;
+    height: auto;
+    max-height: 7;
+    background: $prompt-background;
+    color: $foreground;
+    border: solid $prompt-border;
+    padding: 0 1;
+    margin: 0;
+}
+
+#prompt:focus {
+    border: solid $prompt-border-focus;
+    background: $panel;
+    color: $foreground;
+}
+
+Footer {
+    background: $background;
+}

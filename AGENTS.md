@@ -82,6 +82,9 @@ screenshot pixels. See `PROGRESS.xml` for the full action list.
 - `src/labguide/config.py`: TOML/environment configuration
 - `src/labguide/models.py`: platform-neutral data models
 - `src/labguide/session_log.py`: non-content operational metadata
+- `src/labguide/theme.py`: single color-token theme; stylesheets use only `$` variables
+- `src/labguide/labguide.tcss`: Textual stylesheet (no literal colors)
+- `src/labguide/widgets.py`: role-coded transcript widgets and multiline composer
 - `src/labguide/global_hotkey.py`: Win32 hotkey adapter (Windows only)
 - `src/labguide/ui_probe.py`: isolated, read-only UIA probe (Windows only)
 - `src/labguide/ui_outline.py`: pure outline projection, truncation, redaction

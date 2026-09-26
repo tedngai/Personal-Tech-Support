@@ -7,7 +7,8 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Horizontal, Vertical, VerticalScroll
-from textual.widgets import Input, Static
+from textual.css.query import NoMatches
+from textual.widgets import Footer, Static
 
 from labguide.capture import CaptureError, capture_primary_display
 from labguide.client import BackendClient, BackendError
@@ -28,6 +29,8 @@ from labguide.models import (
 from labguide.platforms import get_adapter
 from labguide.platforms.contracts import HotkeyListener
 from labguide.session_log import SessionLogEntry, SessionLogger
+from labguide.theme import THEME_NAME, labguide_theme
+from labguide.widgets import MarkdownMessage, PromptInput, TextMessage
 
 
 BANNER = "\n".join(
@@ -55,94 +58,7 @@ _WINDOW_IDENTITY_MESSAGES = {
 
 
 class LabGuideApp(App[None]):
-    CSS = """
-    Screen {
-        layout: vertical;
-        background: #0d0d0d;
-        color: #d4d4d4;
-    }
-
-    #scroll {
-        height: 1fr;
-        padding: 1 2 0 2;
-    }
-
-    #conversation {
-        height: auto;
-    }
-
-    .msg {
-        height: auto;
-        margin-bottom: 1;
-        padding: 0 1;
-    }
-
-    .user-msg {
-        color: #e8e8e8;
-    }
-
-    .assistant-msg {
-        color: #c4c4c4;
-    }
-
-    .capture-msg {
-        color: #505050;
-    }
-
-    .error-msg {
-        color: #f44747;
-    }
-
-    .system-msg {
-        color: #666;
-    }
-
-    .banner-msg {
-        width: auto;
-        color: #d28d6d;
-        padding: 1 0 2 0;
-        margin-bottom: 0;
-    }
-
-    .banner-wrap {
-        width: 1fr;
-        height: auto;
-    }
-
-    #bar {
-        height: auto;
-        border-top: solid #222;
-        padding: 0 2;
-    }
-
-    #prompt-prefix {
-        width: auto;
-        color: #555;
-        padding: 1 1 1 0;
-    }
-
-    #prompt {
-        width: 1fr;
-        height: 3;
-        background: #1a1a1a;
-        color: #f0f0f0;
-        border: solid #333;
-        padding: 0 1;
-        margin: 0;
-    }
-
-    #prompt:focus {
-        border: solid #5a5a5a;
-        background: #222;
-        color: #fff;
-    }
-
-    #hint {
-        color: #404040;
-        padding: 0 2;
-        border-top: solid #181818;
-    }
-    """
+    CSS_PATH = "labguide.tcss"
 
     BINDINGS = [
         Binding("ctrl+s", "send_prompt", "Send with screenshot"),
@@ -155,6 +71,8 @@ class LabGuideApp(App[None]):
 
     def __init__(self, config_path: Path | None = None) -> None:
         super().__init__()
+        self.register_theme(labguide_theme())
+        self.theme = THEME_NAME
         self.config: AppConfig = load_config(config_path)
         self.backend = BackendClient(self.config.backend)
         self.session_logger = SessionLogger(self.config.session.log_path)
@@ -164,6 +82,7 @@ class LabGuideApp(App[None]):
         self.request_in_flight = False
         self.pending_capture: CapturedScreenshot | None = None
         self._hotkey_listener: HotkeyListener | None = None
+        self._backend_online: bool | None = None
 
     @property
     def _ui_capture_active(self) -> bool:
@@ -172,41 +91,50 @@ class LabGuideApp(App[None]):
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="scroll"):
             yield Vertical(id="conversation")
+        yield Static(id="status-bar")
         with Horizontal(id="bar"):
             yield Static(">", id="prompt-prefix")
-            yield Input(placeholder="Describe your issue...", id="prompt")
-        yield Static(self._hint_text(), id="hint")
-
-    def _hint_text(self) -> str:
-        if self._ui_capture_active:
-            hotkey = self.config.capture.global_hotkey
-            return (
-                f"Enter send (+pending) | Ctrl+S capture window+send | {hotkey} capture in app "
-                "| Ctrl+Shift+D discard | Ctrl+C quit"
-            )
-        return "Ctrl+S capture+send | Ctrl+C quit"
+            yield PromptInput(self._on_prompt_submitted, id="prompt")
+        yield Footer()
 
     async def on_mount(self) -> None:
         self._append_banner()
         self._append_message("system", "Pratt Lab Guide · local VLM troubleshooting console")
-        self._append_message("system", f"Model: {self.config.backend.model}")
-        self._append_message("system", "Enter: Type Your Question  and  Ctrl+S: capture window below  ·  Ctrl+C: quit")
 
         if self._ui_capture_active:
             self._start_hotkey_listener()
         self._append_message("system", "")
+        self._refresh_status()
 
         try:
             health = await self.backend.health_check()
         except Exception:
             health = HealthResult(reachable=False, detail="Could not reach backend.")
 
+        self._backend_online = health.reachable
         if not health.reachable:
             self._append_message("error", health.detail or "Backend unreachable.")
-        else:
-            self._append_message("system", "Backend online.")
+        self._refresh_status()
 
-        self.query_one("#prompt", Input).focus()
+        self.query_one("#prompt", PromptInput).focus()
+
+    # ------------------------------------------------------------------
+    # Status bar
+    # ------------------------------------------------------------------
+
+    def _refresh_status(self) -> None:
+        try:
+            status_bar = self.query_one("#status-bar", Static)
+        except NoMatches:
+            return
+        status_bar.update(
+            _status_line(
+                model=self.config.backend.model,
+                backend_online=self._backend_online,
+                request_in_flight=self.request_in_flight,
+                pending=self.pending_capture,
+            )
+        )
 
     def on_unmount(self) -> None:
         if self._hotkey_listener is not None:
@@ -268,6 +196,7 @@ class LabGuideApp(App[None]):
         # Replace the pending attachment only after the screenshot succeeds.
         self.pending_capture = screenshot
         self._append_message("capture", _format_capture_summary(screenshot))
+        self._refresh_status()
 
     def _do_window_capture(self, trigger: CaptureTrigger) -> CapturedScreenshot:
         return self._capture_hwnd(trigger.hwnd)
@@ -317,11 +246,11 @@ class LabGuideApp(App[None]):
     # Prompt submission
     # ------------------------------------------------------------------
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self._submit_prompt(event.value, capture=False)
+    def _on_prompt_submitted(self, text: str) -> None:
+        self._submit_prompt(text, capture=False)
 
     def action_send_prompt(self) -> None:
-        prompt = self.query_one("#prompt", Input).value
+        prompt = self.query_one("#prompt", PromptInput).text
         self._submit_prompt(prompt, capture=True)
 
     def _submit_prompt(self, prompt: str, *, capture: bool) -> None:
@@ -329,11 +258,12 @@ class LabGuideApp(App[None]):
         if not clean_prompt or self.request_in_flight:
             return
 
-        input_widget = self.query_one("#prompt", Input)
-        input_widget.value = ""
+        input_widget = self.query_one("#prompt", PromptInput)
+        input_widget.text = ""
         self._append_message("user", clean_prompt)
         self.request_in_flight = True
         input_widget.disabled = True
+        self._refresh_status()
         self._send_request(clean_prompt, capture=capture)
 
     @work(exclusive=True)
@@ -404,9 +334,10 @@ class LabGuideApp(App[None]):
             )
         finally:
             self.request_in_flight = False
-            input_widget = self.query_one("#prompt", Input)
+            input_widget = self.query_one("#prompt", PromptInput)
             input_widget.disabled = False
             input_widget.focus()
+            self._refresh_status()
 
     def _maybe_clear_pending(self, submitted: CapturedScreenshot) -> bool:
         """Clear the pending capture only if it is the one we just sent."""
@@ -417,9 +348,9 @@ class LabGuideApp(App[None]):
 
     def _restore_prompt_after_failure(self, prompt: str) -> None:
         """Put the failed prompt back if the user has not typed something new."""
-        input_widget = self.query_one("#prompt", Input)
-        if not input_widget.value.strip():
-            input_widget.value = prompt
+        input_widget = self.query_one("#prompt", PromptInput)
+        if not input_widget.text.strip():
+            input_widget.text = prompt
 
     def _recent_history(self) -> list[Message]:
         # max_history_turns counts user/assistant pairs, not raw messages.
@@ -444,6 +375,7 @@ class LabGuideApp(App[None]):
             return
         self.pending_capture = None
         self._append_message("system", "Pending capture discarded.")
+        self._refresh_status()
 
     def action_clear_conversation(self) -> None:
         self.history.clear()
@@ -471,35 +403,42 @@ class LabGuideApp(App[None]):
 
     def _append_message(self, role: str, content: str) -> None:
         conversation = self.query_one("#conversation", Vertical)
-
-        role_colors = {
-            "user": "#e8e8e8",
-            "assistant": "#c4c4c4",
-            "capture": "#505050",
-            "error": "#f44747",
-            "system": "#666",
-        }
-        role_prefixes = {
-            "user": "> ",
-            "assistant": "",
-            "capture": "  ",
-            "error": "! ",
-            "system": "",
-        }
-        color = role_colors.get(role, "#c4c4c4")
-        prefix = role_prefixes.get(role, "")
-
-        conversation.mount(
-            Static(
-                f"[{color}]{prefix}{content}[/{color}]",
-                classes=f"msg {role}-msg",
-                markup=True,
-            )
-        )
+        widget: MarkdownMessage | TextMessage
+        if role == "assistant":
+            widget = MarkdownMessage(role, content)
+        else:
+            widget = TextMessage(role, content)
+        conversation.mount(widget)
         self.call_after_refresh(self._scroll_end)
 
     def _scroll_end(self) -> None:
         self.query_one("#scroll", VerticalScroll).scroll_end(animate=False)
+
+
+def _status_line(
+    model: str,
+    backend_online: bool | None,
+    request_in_flight: bool,
+    pending: CapturedScreenshot | None,
+) -> str:
+    """Status strip markup: backend dot, model, pending attachment, spinner.
+
+    Metadata only; never includes captured window titles or UI content.
+    """
+    if backend_online is None:
+        backend = "backend: checking"
+    elif backend_online:
+        backend = "[green]●[/] backend online"
+    else:
+        backend = "[red]●[/] backend offline"
+
+    parts = [backend, f"model: {model}"]
+    if pending is not None:
+        target_name = pending.target.process_name if pending.target is not None else "screen"
+        parts.append(f"[orange]📎 {target_name}[/] (Ctrl+S sends, Ctrl+Shift+D discards)")
+    if request_in_flight:
+        parts.append("[turquoise]⟳ thinking…[/]")
+    return "  ·  ".join(parts)
 
 
 def _format_capture_summary(screenshot: CapturedScreenshot) -> str:
