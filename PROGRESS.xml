@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<progress project="Pratt Lab Guide" updated="2026-09-15">
+<progress project="Pratt Lab Guide" updated="2026-10-05">
   <summary>
     Cross-platform initiative (Windows + macOS, Linux deferred). Phases 1-5
     implemented and unit-tested on Windows. The macOS adapter is implemented
@@ -9,15 +9,27 @@
 
   <current-state>
     <tests total="82" passing="82" platform="windows"/>
-    <commit ref="a53bd82" branch="main" pushed="true"/>
+    <commit ref="81afe98" branch="main" pushed="true"/>
     <platform name="windows" status="implemented">
       <note>Adapter wraps existing Win32 modules; behavior unchanged.</note>
     </platform>
-    <platform name="macos" status="implemented-unvalidated">
+    <platform name="macos" status="partially-validated">
       <note>
-        All macOS code is new and untested on hardware: CGWindowList identity,
-        ScreenCaptureKit capture, AXUIElement probe, pynput hotkey, TCC checks.
-        PyObjC/pynput dependencies are declared but not yet installed anywhere.
+        First hardware validation 2026-10-05 on macOS 26.6.2 (Tahoe, Mac mini
+        M1, Hermes app as permission host). Working: TCC preflights,
+        CGWindowList identity with titles, window-below chain, mss primary
+        display, and window capture itself. Capture needed a code fix: the
+        PyObjC 11.1 bindings lag macOS 26 (SCScreenshotConfiguration lost
+        +configuration/pixelFormat; the framework selector walk raises
+        NSInvalidArgumentException), so screenshot.py now layers a runtime
+        accessor shim plus a CGWindowListCreateImage fallback (verified
+        673x439 exact). Blocked: the AXUIElement probe regressed mid-session
+        after a probe process SIGABRT inside an AX XPC transaction; the AX
+        server now returns self-referential degenerate windows to every
+        Hermes-hosted process and System Events queries hang too. Believed
+        to be wedged per-responsible-process AX state, not repo code
+        (identical probe passed 08:35, failed 08:39, no code change). A
+        Hermes relaunch is the pending remedy.
       </note>
     </platform>
     <platform name="linux" status="deferred">
