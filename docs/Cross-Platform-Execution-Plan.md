@@ -113,6 +113,44 @@ Tahoe machine.
 | Backend request fails | Pending capture retained; prompt restored |
 | Hotkey while terminal focused | Capture ignored with readable message |
 
+### Validation status — 2026-10-05, macOS 26.6.2 (Tahoe, Mac mini M1, 1x display)
+
+Driven from the Hermes app as permission host. Machine-run rows were
+exercised through headless adapter calls and the isolated probe CLI.
+
+| Scenario | Outcome |
+| --- | --- |
+| TextEdit with known text | PASS — complete snapshot, all known strings found |
+| Standard error dialog | GAP FOUND — modal dialogs sit at CGS layer 8; `get_foreground_window_id()` / `get_window_below()` accept layer 0 only, so the identity stage cannot target them. AX readability of the dialog itself left inconclusive (AX wedge, below) |
+| Safari page | PASS — partial at the 500-node cap, rich tree (73 Text, 25 Hyperlink) |
+| Electron application | PASS — Hermes window: partial, 348 nodes, bounded truncation |
+| Password field (secure text) | PASS — NSSecureTextField yields only a `pw=True` marker; value never read; plain field content intact |
+| Screen Recording denied | PASS — preflight false, readable CaptureError (observed before grant) |
+| Accessibility denied | PASS — preflight false observed; probe inaccessibility path unit-tested |
+| Hung AX provider | PASS — probe child hard-killed at 0.50 s, `timed_out` status, parent responsive |
+| Retina display | N/A here — 1x display (point/pixel scale verified = 1.0; 2x path implemented via `pointPixelScale`, needs Retina hardware) |
+| Secondary display | N/A — single display |
+| Target closes during capture | PASS — stale window id fails bounded (0.08 s) with readable error |
+| Backend request fails | Pending — needs interactive TUI against a backend |
+| Hotkey while terminal focused | Pending real keypress — synthetic CGEvents are ignored by pynput 1.8.2 `GlobalHotKeys` (`if not injected:`), by design; raw event tap reception verified working |
+
+Additional findings:
+
+- **Capture fix (code change, this session):** PyObjC 11.1 bindings lag
+  macOS 26 — SCScreenshotConfiguration lost `+configuration` and its
+  pixelFormat accessors while the framework still walks them by selector.
+  `screenshot.py` now layers a runtime accessor shim plus a
+  CGWindowListCreateImage fallback; verified exact window pixels (673x439).
+- **AX server wedge (environment, not code):** twice this session the AX
+  server began returning self-referential degenerate windows (role
+  AXApplication as AXMainWindow, attribute errors -25205/-25202) to every
+  Hermes-hosted process, and System Events queries hung. Both episodes
+  followed a Python process dying abruptly while its AX tree had just been
+  served (SIGABRT inside an AX XPC transaction; later a SIGTERM after a
+  probe). A Hermes relaunch cleared it the first time; identical probe
+  results returned immediately. Avoid hard-killing AX-served processes from
+  this process tree; prefer graceful app quits.
+
 ## Verification Commands
 
 Any platform:

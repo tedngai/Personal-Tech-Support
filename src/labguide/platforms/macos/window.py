@@ -14,6 +14,14 @@ from labguide.models import TargetWindow, WindowIdentityError
 # Owners that mean "the user pointed the hotkey at the support tool itself".
 _TERMINAL_OWNER_NAMES = {"Terminal", "iTerm2", "iTerm", "WezTerm", "Alacritty", "kitty"}
 
+# Window layers that are valid capture targets. Layer 0 is the normal
+# application layer; layer 8 holds modal dialog panels (error dialogs,
+# save panels), which sit above their owner and are the very thing a user
+# points the hotkey at. Higher layers (menu bar 24, status items 25) are
+# never capture targets. Verified on macOS 26: an osascript error dialog
+# surfaces at layer 8 with an empty kCGWindowName.
+_CAPTURE_WINDOW_LAYERS = {0, 8}
+
 
 def _window_list() -> list[dict]:
     from Quartz import (
@@ -36,9 +44,10 @@ def _window_info(window_id: int) -> dict | None:
 
 
 def _is_candidate(info: dict) -> bool:
-    # Layer 0 is the normal application window layer; skip menu bars, docks,
-    # and overlay panels.
-    return int(info.get("kCGWindowLayer", -1)) == 0
+    # Layer 0 is the normal application window layer; layer 8 holds modal
+    # dialog panels (error dialogs, save panels) that are legitimate capture
+    # targets. Skip menu bars, docks, status items, and overlay panels.
+    return int(info.get("kCGWindowLayer", -1)) in _CAPTURE_WINDOW_LAYERS
 
 
 def get_foreground_window_id() -> int:

@@ -8,7 +8,7 @@
   </summary>
 
   <current-state>
-    <tests total="82" passing="82" platform="windows"/>
+    <tests total="100" passing="100" skipped="3"/>
     <commit ref="81afe98" branch="main" pushed="true"/>
     <platform name="windows" status="implemented">
       <note>Adapter wraps existing Win32 modules; behavior unchanged.</note>
@@ -25,11 +25,22 @@
         accessor shim plus a CGWindowListCreateImage fallback (verified
         673x439 exact). Blocked: the AXUIElement probe regressed mid-session
         after a probe process SIGABRT inside an AX XPC transaction; the AX
-        server now returns self-referential degenerate windows to every
+        AX server now returns self-referential degenerate windows to every
         Hermes-hosted process and System Events queries hang too. Believed
         to be wedged per-responsible-process AX state, not repo code
         (identical probe passed 08:35, failed 08:39, no code change). A
         Hermes relaunch is the pending remedy.
+        Second session 2026-10-05 (after relaunch): AX wedge cleared and
+        probe returned complete snapshots; TextEdit, Safari, Electron-class
+        (Hermes), secure-field redaction, hung-provider timeout, stale-
+        window bounded failure, permission preflights, and mss display
+        capture all verified. A second wedge episode followed a hard kill
+        of an AX-served test process; relaunch is the remedy again.
+        Code fix: modal dialog panels (CGS layer 8) are now accepted capture
+        targets by _is_candidate (was layer 0 only), with unit tests.
+        Remaining: interactive TUI flow (backend request row), real-keypress
+        hotkey row (pynput ignores injected events by design), Retina and
+        secondary-display rows (hardware not available on the test machine).
       </note>
     </platform>
     <platform name="linux" status="deferred">
