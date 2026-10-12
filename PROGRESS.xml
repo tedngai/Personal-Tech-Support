@@ -54,10 +54,13 @@
         desktop-crop fallback with warning), submit against the real
         backend, single-instance enforcement, tray icon show/quit, hotkey
         chord in header, CWD-independent config resolution (env, cwd,
-        exe dir, user dir). First MSI built: LabGuide_0.1.0_x64_en-US.msi
+        exe dir, user dir) plus a machine-wide layer
+        (%PROGRAMDATA%\LabGuide\labguide.toml) that wins per key so one
+        file provisions every user of a machine. First MSI built:
+        LabGuide_0.1.0_x64_en-US.msi
         (unsigned). Identity frozen: com.labguide.desktop / LabGuide /
-        labguide-sidecar. Tests: 163 Python (3 new blank-image cases) +
-        12 vitest. Remaining: real-keypress hotkey confirmation (one
+        labguide-sidecar. Tests: 171 Python + 12 vitest. Remaining:
+        real-keypress hotkey confirmation (one
         interactive step), Authenticode cert + signed MSI, updater wiring,
         macOS bundle/notarization (needs a Mac), MDM confirmation with
         campus IT, README/example-config sync for the desktop app.

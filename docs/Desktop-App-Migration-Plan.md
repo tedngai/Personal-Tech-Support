@@ -223,6 +223,16 @@ include captured content.
 
 - [ ] Config layering implemented: MDM profile path (platform-appropriate)
       → user TOML → defaults; MDM layer displayed as managed/read-only.
+
+  Progress note: the machine-wide layer is implemented —
+  `%PROGRAMDATA%\LabGuide\labguide.toml` (Windows),
+  `/Library/Application Support/LabGuide/labguide.toml` (macOS),
+  `/etc/labguide/labguide.toml` (Linux). It wins per key over the user
+  layer, so a fleet can guarantee backend URL/model/hotkey while users still
+  fill in anything IT leaves unset. An explicit path or `LABGUIDE_CONFIG`
+  bypasses the machine layer for dev/testing. Still open: surfacing
+  "managed by your organization" in the settings UI, and the sample MDM
+  profiles below.
 - [ ] Sample MDM profiles: macOS TCC pre-approval payload (Screen Recording,
       Accessibility) and Windows policy notes for campus IT.
 - [ ] Validation on a managed machine image: antivirus/proxy behavior with

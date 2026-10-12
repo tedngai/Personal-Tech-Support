@@ -31,6 +31,26 @@ def _user_config_dir() -> Path:
     return Path.home() / ".config" / "labguide"
 
 
+def _machine_config_dir() -> Path:
+    """Machine-wide config directory, provisioned by admins or MDM.
+
+    Windows: %PROGRAMDATA%\\LabGuide. macOS: /Library/Application Support/
+    LabGuide. A labguide.toml here applies to every user of the machine
+    and wins per-key over the user-level config, so a fleet can guarantee
+    backend URL, model, and capture policy without locking every setting.
+    """
+    if sys.platform == "win32":
+        base = os.environ.get("PROGRAMDATA")
+        return Path(base) / "LabGuide" if base else Path("C:/ProgramData/LabGuide")
+    if sys.platform == "darwin":
+        return Path("/Library/Application Support/LabGuide")
+    return Path("/etc/labguide")
+
+
+def _machine_config_path() -> Path:
+    return _machine_config_dir() / "labguide.toml"
+
+
 def resolve_config_path(explicit: Path | None = None) -> Path:
     """Locate labguide.toml without depending on the process CWD alone.
 
@@ -131,8 +151,23 @@ class AppConfig:
 
 
 def load_config(config_path: Path | None = None) -> AppConfig:
-    path = resolve_config_path(config_path)
-    raw = _read_toml(path) if path.exists() else {}
+    """Load layered configuration.
+
+    Layers, weakest to strongest: built-in defaults, user config, machine
+    config. The machine layer wins per key (fleet guarantee); the user
+    layer fills every key the machine layer does not set. An explicit path
+    argument or LABGUIDE_CONFIG environment variable bypasses the machine
+    layer entirely (dev/testing override).
+    """
+    explicit = config_path is not None or bool(os.environ.get("LABGUIDE_CONFIG"))
+    primary = resolve_config_path(config_path)
+    user_raw = _read_toml(primary) if primary.is_file() else {}
+    machine_raw: dict = {}
+    if not explicit:
+        machine_path = _machine_config_path()
+        if machine_path.is_file():
+            machine_raw = _read_toml(machine_path)
+    raw = _merge_config_layers(user_raw, machine_raw)
     backend_defaults = BackendConfig()
     capture_defaults = CaptureConfig()
     session_defaults = SessionConfig()
@@ -183,6 +218,21 @@ def _read_toml(path: Path) -> dict:
     # Editors such as Notepad save a UTF-8 BOM, which tomllib rejects.
     # Decode with utf-8-sig so the config loads regardless.
     return tomllib.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def _merge_config_layers(base: dict, override: dict) -> dict:
+    """Deep-merge TOML sections; ``override`` wins per key.
+
+    Pure. Only the known top-level sections (backend/capture/session) are
+    flat dicts, so a one-level merge per section is sufficient.
+    """
+    merged = dict(base)
+    for section, values in override.items():
+        if isinstance(values, dict) and isinstance(merged.get(section), dict):
+            merged[section] = {**merged[section], **values}
+        else:
+            merged[section] = values
+    return merged
 
 
 def _read_api_key(backend: dict) -> str | None:
