@@ -47,6 +47,9 @@ export default function App() {
             {hello.config.ui_enabled ? "UI context on" : "UI context off"}
           </span>
         )}
+        {hello && hello.capabilities.global_hotkey && (
+          <span className="text-role-capture">hotkey: {hello.config.global_hotkey}</span>
+        )}
         <span className={`ml-auto ${degraded ? "text-role-error" : "text-role-assistant"}`}>
           {connection === "connecting" ? "connecting" : degraded ? "offline" : "online"}
         </span>
