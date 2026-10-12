@@ -75,7 +75,10 @@ fn spawn_supervised(app: tauri::AppHandle) {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        // Let the sidecar recognize the LabGuide GUI as its own window: the
+        // hotkey and below-selection must never target us.
+        .env("LABGUIDE_OWN_PID", std::process::id().to_string());
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 

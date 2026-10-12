@@ -69,6 +69,7 @@ class BackendClient:
             "model": self._config.model,
             "messages": _build_messages(
                 system_prompt=self._config.system_prompt,
+                text_only_system_prompt=self._config.text_only_system_prompt,
                 latest_message=message,
                 screenshot=screenshot,
                 history=history,
@@ -184,7 +185,12 @@ def _build_messages(
     screenshot: CapturedScreenshot | None,
     history: list[Message],
     ui_max_text_chars: int = 10000,
+    text_only_system_prompt: str = "",
 ) -> list[dict[str, Any]]:
+    # A turn without a screenshot must not carry a system prompt that tells
+    # the model to describe one — that invites hallucinated screens.
+    if screenshot is None and text_only_system_prompt.strip():
+        system_prompt = text_only_system_prompt
     messages: list[dict[str, Any]] = []
     if system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()})

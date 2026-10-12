@@ -121,3 +121,28 @@ class BuildMessagesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TextOnlySystemPromptTests(unittest.TestCase):
+    SYSTEM = "Use the screenshot to explain what you see."
+    TEXT_ONLY = "No screenshot is attached; do not describe anything on screen."
+
+    def test_text_only_turn_uses_text_only_prompt(self) -> None:
+        messages = _build_messages(
+            self.SYSTEM, "hi", None, [], text_only_system_prompt=self.TEXT_ONLY
+        )
+        self.assertEqual(messages[0]["content"], self.TEXT_ONLY)
+
+    def test_screenshot_turn_keeps_default_prompt(self) -> None:
+        messages = _build_messages(
+            self.SYSTEM,
+            "hi",
+            make_screenshot(),
+            [],
+            text_only_system_prompt=self.TEXT_ONLY,
+        )
+        self.assertEqual(messages[0]["content"], self.SYSTEM)
+
+    def test_missing_text_only_prompt_falls_back_to_default(self) -> None:
+        messages = _build_messages(self.SYSTEM, "hi", None, [])
+        self.assertEqual(messages[0]["content"], self.SYSTEM)
