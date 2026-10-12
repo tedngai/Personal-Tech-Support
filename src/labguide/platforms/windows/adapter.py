@@ -17,7 +17,7 @@ from labguide.models import (
     TargetWindow,
     UISnapshot,
 )
-from labguide.platforms.contracts import HotkeyListener, PlatformCapabilities
+from labguide.platforms.contracts import HotkeyListener, PlatformCapabilities, WindowChoice
 from labguide.ui_probe import run_ui_probe
 from labguide.win32_window import (
     ensure_dpi_awareness,
@@ -25,6 +25,7 @@ from labguide.win32_window import (
     get_foreground_hwnd,
     get_window_below,
     is_own_terminal,
+    list_candidate_windows,
 )
 
 
@@ -54,6 +55,9 @@ class WindowsAdapter:
 
     def get_window_below(self, target: int) -> int:
         return get_window_below(target)
+
+    def list_capture_targets(self) -> list[WindowChoice]:
+        return list_candidate_windows()
 
     def freeze_target(self, target: int) -> TargetWindow:
         return freeze_target_window(target)

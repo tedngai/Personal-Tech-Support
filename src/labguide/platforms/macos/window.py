@@ -14,6 +14,9 @@ from labguide.models import TargetWindow, WindowIdentityError
 # Owners that mean "the user pointed the hotkey at the support tool itself".
 _TERMINAL_OWNER_NAMES = {"Terminal", "iTerm2", "iTerm", "WezTerm", "Alacritty", "kitty"}
 
+# Window-server and system owners that are never user apps.
+_NON_APP_OWNERS = {"Window Server", "Dock", "SystemUIServer", "ControlCenter", "Wallpaper"}
+
 # Window layers that are valid capture targets. Layer 0 is the normal
 # application layer; layer 8 holds modal dialog panels (error dialogs,
 # save panels), which sit above their owner and are the very thing a user
@@ -34,6 +37,42 @@ def _window_list() -> list[dict]:
     options = kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements
     windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
     return list(windows) if windows else []
+
+
+def list_candidate_windows(*, limit: int = 30) -> list[WindowChoice]:
+    """User-selectable capture targets, front-to-back in z-order.
+
+    Drives the desktop app's window picker. Uses the same candidate filter
+    as foreground/below selection (layers 0 and 8, own terminal owners
+    excluded). Window titles require Screen Recording permission; without
+    it the owner name is used instead.
+    """
+    from labguide.platforms.contracts import WindowChoice
+
+    results: list[WindowChoice] = []
+    for info in _window_list():
+        if len(results) >= limit:
+            break
+        if not _is_candidate(info):
+            continue
+        owner = str(info.get("kCGWindowOwnerName", "")).strip()
+        if owner in _TERMINAL_OWNER_NAMES or owner in _NON_APP_OWNERS:
+            continue
+        title = str(info.get("kCGWindowName", "")).strip()
+        if not title:
+            # Owner-only entries (many dialogs) are still selectable; show
+            # the owner as the label.
+            if not owner:
+                continue
+            title = owner
+        results.append(
+            WindowChoice(
+                hwnd=int(info.get("kCGWindowNumber", 0)),
+                title=title,
+                process_name=owner or "unknown",
+            )
+        )
+    return results
 
 
 def _window_info(window_id: int) -> dict | None:

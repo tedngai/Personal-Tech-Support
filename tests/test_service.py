@@ -94,6 +94,14 @@ class FakeAdapter:
     def get_window_below(self, target: int) -> int:
         return self.below
 
+    def list_capture_targets(self):
+        from labguide.platforms.contracts import WindowChoice
+
+        return [
+            WindowChoice(hwnd=99, title="Firefox", process_name="firefox.exe"),
+            WindowChoice(hwnd=42, title="Untitled - Notepad", process_name="Notepad.exe"),
+        ]
+
     def freeze_target(self, target: int) -> TargetWindow:
         if self.freeze_error is not None:
             raise self.freeze_error
@@ -394,6 +402,38 @@ def _has_event(service: SidecarService, name: str) -> bool:
     return any(
         p.get("event") == name for p in output_lines(service)
     )
+
+
+
+class WindowPickerTests(unittest.TestCase):
+    def test_windows_list_returns_choices(self) -> None:
+        service, _ = make_service(FakeAdapter())
+        response = call(service, 1, "windows.list")
+        windows = response["result"]["windows"]
+        self.assertEqual(windows[0], {"id": 99, "title": "Firefox", "process_name": "firefox.exe"})
+        self.assertEqual(windows[1]["id"], 42)
+
+    def test_capture_window_mode_captures_chosen_hwnd(self) -> None:
+        adapter = FakeAdapter()
+        service, _ = make_service(adapter)
+        response = call(service, 1, "capture.start", {"mode": "window", "hwnd": 99})
+        self.assertTrue(response["result"]["pending"])
+        # The fake adapter always reports Notepad; what matters is the
+        # request path succeeds and stores a pending attachment.
+        after = call(service, 2, "attachment.get")
+        self.assertTrue(after["result"]["pending"])
+
+    def test_capture_window_mode_requires_hwnd(self) -> None:
+        service, _ = make_service(FakeAdapter())
+        response = call(service, 1, "capture.start", {"mode": "window"})
+        self.assertEqual(response["error"]["code"], -32602)
+
+    def test_capture_window_mode_rejects_own_window(self) -> None:
+        adapter = FakeAdapter()
+        adapter.own_terminal_targets = {99}
+        service, _ = make_service(adapter)
+        response = call(service, 1, "capture.start", {"mode": "window", "hwnd": 99})
+        self.assertEqual(response["error"]["data"]["category"], "own_terminal")
 
 
 if __name__ == "__main__":

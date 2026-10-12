@@ -21,6 +21,19 @@ from labguide.models import (
 
 
 @dataclass(frozen=True, slots=True)
+class WindowChoice:
+    """One user-selectable capture target for the window picker.
+
+    ``hwnd`` is the platform-native window reference, opaque outside the
+    adapter; the UI treats it as an id.
+    """
+
+    hwnd: int
+    title: str
+    process_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class PlatformCapabilities:
     """What the current platform adapter can actually do.
 
@@ -66,6 +79,10 @@ class PlatformAdapter(Protocol):
 
     def get_window_below(self, target: int) -> int:
         """Best-effort "app the user was just in" below target, or 0."""
+        ...
+
+    def list_capture_targets(self) -> list[WindowChoice]:
+        """User-selectable capture targets, top-to-bottom in z-order."""
         ...
 
     def freeze_target(self, target: int) -> TargetWindow:
@@ -118,6 +135,9 @@ class UnsupportedAdapter:
 
     def get_window_below(self, target: int) -> int:
         return 0
+
+    def list_capture_targets(self) -> list[WindowChoice]:
+        return []
 
     def freeze_target(self, target: int) -> TargetWindow:
         raise WindowIdentityError("unavailable")

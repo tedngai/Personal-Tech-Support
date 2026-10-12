@@ -98,6 +98,7 @@ class SidecarService:
         self._methods: dict[str, tuple[Callable[[dict[str, Any]], dict[str, Any]], float]] = {
             "hello": (self._hello, _DEFAULT_DEADLINE_SECONDS),
             "permissions.status": (self._permissions_status, _DEFAULT_DEADLINE_SECONDS),
+            "windows.list": (self._windows_list, _DEFAULT_DEADLINE_SECONDS),
             "capture.start": (self._capture_start, _CAPTURE_DEADLINE_SECONDS),
             "attachment.get": (self._attachment_get, _DEFAULT_DEADLINE_SECONDS),
             "submit": (self._submit, self._config.backend.timeout_seconds + 20.0),
@@ -315,15 +316,31 @@ class SidecarService:
             result["permissions"] = _macos_permissions()
         return result
 
+    def _windows_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        """User-selectable capture targets for the window picker."""
+        choices = self._adapter.list_capture_targets()
+        return {
+            "windows": [
+                {"id": choice.hwnd, "title": choice.title, "process_name": choice.process_name}
+                for choice in choices
+            ]
+        }
+
     def _capture_start(self, params: dict[str, Any]) -> dict[str, Any]:
         mode = params.get("mode", "foreground")
-        if mode not in ("foreground", "below", "display"):
+        if mode not in ("foreground", "below", "display", "window"):
             raise IpcError(
                 INVALID_PARAMS,
-                "mode must be one of: foreground, below, display",
+                "mode must be one of: foreground, below, display, window",
                 stage="capture.start",
             )
-        screenshot = self._capture_for_mode(mode)
+        if mode == "window" and not isinstance(params.get("hwnd"), int):
+            raise IpcError(
+                INVALID_PARAMS,
+                "mode 'window' requires an integer hwnd from windows.list",
+                stage="capture.start",
+            )
+        screenshot = self._capture_for_mode(mode, params.get("hwnd"))
         with self._state_lock:
             # Replace the pending attachment only after capture succeeds.
             self._pending = screenshot
@@ -424,7 +441,7 @@ class SidecarService:
     # Capture paths
     # ------------------------------------------------------------------
 
-    def _capture_for_mode(self, mode: str) -> CapturedScreenshot:
+    def _capture_for_mode(self, mode: str, hwnd: int | None = None) -> CapturedScreenshot:
         """Capture for a UI-initiated request. Bounded, off the pump thread."""
         capture_config = self._config.capture
         if mode == "display":
@@ -433,6 +450,18 @@ class SidecarService:
                 max_dimension=capture_config.jpeg_max_dimension,
                 max_bytes=capture_config.jpeg_max_bytes,
             )
+
+        if mode == "window":
+            # A user-picked window. Own-window picks are refused rather than
+            # silently capturing LabGuide's own UI.
+            if self._adapter.is_own_terminal(hwnd):
+                raise IpcError(
+                    CAPTURE_FAILED,
+                    "Capture ignored: the selected window is LabGuide itself.",
+                    stage="capture.start",
+                    category="own_terminal",
+                )
+            return self._capture_hwnd(hwnd)
 
         try:
             hwnd = self._resolve_target(mode)

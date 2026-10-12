@@ -28,8 +28,10 @@ __all__ = [
     "get_process_name",
     "get_window_bounds",
     "WindowCandidate",
+    "WindowChoice",
     "select_window_below",
     "get_window_below",
+    "list_candidate_windows",
     "freeze_target_window",
 ]
 
@@ -223,6 +225,15 @@ class WindowCandidate:
     is_shell_desktop: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class WindowChoice:
+    """One user-selectable capture target for the window picker."""
+
+    hwnd: int
+    title: str
+    process_name: str
+
+
 def select_window_below(candidates: list[WindowCandidate]) -> int | None:
     """Pick the window the user most likely means from z-order candidates.
 
@@ -270,6 +281,56 @@ def get_window_below(hwnd: int, *, max_hops: int = 20) -> int:
             )
         )
     return select_window_below(candidates) or 0
+
+
+_ENUM_WINDOWS = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+_WS_EX_TOOLWINDOW = 0x0000_0080
+_GWL_EXSTYLE = -20
+
+
+def list_candidate_windows(*, limit: int = 30) -> list[WindowChoice]:
+    """User-selectable capture targets, top-to-bottom in z-order.
+
+    Drives the desktop app's window picker. Excludes shell desktop windows,
+    LabGuide's own windows, tool windows, and untitled windows; keeps the
+    first ``limit`` results so the picker stays readable on busy desktops.
+    """
+    if sys.platform != "win32":
+        return []
+    results: list[WindowChoice] = []
+
+    def callback(hwnd: int, _lparam: int) -> bool:
+        if len(results) >= limit:
+            return False
+        if not _user32.IsWindowVisible(wintypes.HWND(hwnd)):
+            return True
+        ex_style = _user32.GetWindowLongW(wintypes.HWND(hwnd), _GWL_EXSTYLE)
+        if ex_style & _WS_EX_TOOLWINDOW:
+            return True
+        class_name = get_window_class_name(hwnd)
+        if class_name in _SHELL_CLASS_NAMES:
+            return True
+        if is_own_terminal(hwnd):
+            return True
+        title = get_window_title(hwnd)
+        if not title.strip():
+            return True
+        try:
+            pid = get_window_pid(hwnd)
+        except WindowIdentityError:
+            return True
+        results.append(
+            WindowChoice(hwnd=hwnd, title=title, process_name=get_process_name(pid))
+        )
+        return True
+
+    try:
+        _user32.EnumWindows(_ENUM_WINDOWS(callback), 0)
+    except Exception:
+        # Enumeration is best-effort: an unreadable window must not break
+        # the picker entirely.
+        pass
+    return results
 
 
 def freeze_target_window(hwnd: int) -> TargetWindow:

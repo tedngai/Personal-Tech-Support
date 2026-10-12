@@ -18,7 +18,7 @@ from labguide.models import (
     TargetWindow,
     UISnapshot,
 )
-from labguide.platforms.contracts import HotkeyListener, PlatformCapabilities
+from labguide.platforms.contracts import HotkeyListener, PlatformCapabilities, WindowChoice
 
 
 class MacOSAdapter:
@@ -55,6 +55,11 @@ class MacOSAdapter:
         from labguide.platforms.macos.window import get_window_below
 
         return get_window_below(target)
+
+    def list_capture_targets(self) -> list[WindowChoice]:
+        from labguide.platforms.macos.window import list_candidate_windows
+
+        return list_candidate_windows()
 
     def freeze_target(self, target: int) -> TargetWindow:
         from labguide.platforms.macos.window import freeze_target_window
