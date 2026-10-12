@@ -46,29 +46,21 @@
     <platform name="linux" status="deferred">
       <note>UnsupportedAdapter: text-only + primary screenshot fallback.</note>
     </platform>
-    <initiative name="desktop-app" status="phase-1-implemented">
+    <initiative name="desktop-app" status="phase-2-mostly-complete">
       <note>
-        Migration plan drafted (docs/Desktop-App-Migration-Plan.md): Tauri 2 +
-        React shell with a PyInstaller Python sidecar owning capture and the
-        backend request; hotkey stays in the sidecar; Textual TUI remains
-        supported until desktop acceptance passes. Phase 1 (sidecar
-        extraction) implemented: labguide.ipc JSON-RPC envelope with domain
-        error taxonomy, labguide.service stdio service owning pending
-        attachment, history, hotkey, and session log; every call bounded;
-        graceful shutdown; 141 unit tests passing. Smoke-tested through the
-        real stdio entry point on Windows. Phase 2 started: Tauri 2 + React
-        scaffold verified with cargo check (MSVC toolchain), sidecar packaged
-        via PyInstaller and smoke-tested as a standalone exe, Rust-side
-        spawn/supervision/JSON-RPC forwarding/graceful shutdown implemented
-        (shell-plugin registration panic found in first live run and fixed).
-        Typed TS IPC client implemented and contract-locked to the Python
-        service via golden fixtures generated from the Python contract tests
-        (12 vitest cases). React UI implemented: transcript (role-coded,
-        markdown for assistant answers only), composer, pending-capture
-        panel, degraded banner, Tailwind token theme. Remaining: live
-        tauri-dev verification of the full loop, tray, single-instance. Plan Phase 0 decision gates
-        (signing certs, MDM confirmation, fixed identity) remain open and
-        block fleet release, not development.
+        Tauri 2 + React shell with PyInstaller Python sidecar. Working in
+        live tauri-dev runs (2026-10-12): text-only chat, thumbnail window
+        picker, PrintWindow capture of covered windows (blank detection +
+        desktop-crop fallback with warning), submit against the real
+        backend, single-instance enforcement, tray icon show/quit, hotkey
+        chord in header, CWD-independent config resolution (env, cwd,
+        exe dir, user dir). First MSI built: LabGuide_0.1.0_x64_en-US.msi
+        (unsigned). Identity frozen: com.labguide.desktop / LabGuide /
+        labguide-sidecar. Tests: 163 Python (3 new blank-image cases) +
+        12 vitest. Remaining: real-keypress hotkey confirmation (one
+        interactive step), Authenticode cert + signed MSI, updater wiring,
+        macOS bundle/notarization (needs a Mac), MDM confirmation with
+        campus IT, README/example-config sync for the desktop app.
       </note>
     </initiative>
   </current-state>

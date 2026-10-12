@@ -140,9 +140,15 @@ include captured content.
 - [ ] Acquire code-signing assets: Windows Authenticode certificate (OV or
       EV; EV avoids SmartScreen reputation lag), Apple Developer ID + notary
       tooling.
-- [ ] Fix the application identity: bundle ID, sidecar executable name,
+- [x] Fix the application identity: bundle ID, sidecar executable name,
       update-channel URL layout. These are unchangeable after first fleet
       release (TCC keys on them).
+
+  Decided 2026-10-12: bundle ID `com.labguide.desktop`, product name
+  "LabGuide", sidecar executable `labguide-sidecar` (PyInstaller onefile),
+  Windows target MSI. Update-channel layout is decided when the updater is
+  wired (Phase 3); changing it later is safe because no fleet release has
+  happened yet.
 
 ### Phase 1: Sidecar extraction (no UI change)
 
@@ -183,23 +189,33 @@ include captured content.
       supervised restart with backoff; UI shows a readable degraded banner
       while the sidecar is down (screenshot-only/text-only rules preserved
       at the UI layer).
-- [ ] Single-instance enforcement; tray icon with show/quit.
-- [ ] Typed TS client generated or hand-mirrored from the IPC contract, with
+- [x] Single-instance enforcement; tray icon with show/quit.
+- [x] Typed TS client generated or hand-mirrored from the IPC contract, with
       a drift test (contract test shared by both sides).
-- [ ] React components: transcript (role-coded), composer, pending-capture
+- [x] React components: transcript (role-coded), composer, pending-capture
       state machine (replace-only-after-success, retain-on-error,
       clear-on-send), permission surfacing.
-- [ ] Theme tokens in Tailwind config; no literal colors in components.
+- [x] Theme tokens in Tailwind config; no literal colors in components.
+- [x] Live `tauri dev` verification of the full loop (2026-10-12): text-only
+      chat, thumbnail window picker, PrintWindow capture of covered windows,
+      submit with real backend, hotkey chord shown in header. Hotkey capture
+      with a real keypress still needs one interactive confirmation.
+- [x] Windows capture of covered windows via PrintWindow
+      (`PW_RENDERFULLCONTENT`) with blank detection and a readable desktop-
+      crop fallback. Windows Graphics Capture remains the later replacement.
 
 ### Phase 3: Packaging and identity
 
-- [ ] PyInstaller onefile spec per OS; sidecar versioned and signed with the
-      same identity across releases.
-- [ ] Windows: MSI via Tauri bundler, Authenticode-signed shell + sidecar.
+- [x] PyInstaller onefile spec per OS; sidecar versioned and signed with the
+      same identity across releases. (Build script `scripts/build_sidecar.py`;
+      signing itself is still open — see Phase 0 certs.)
+- [x] Windows: MSI via Tauri bundler, Authenticode-signed shell + sidecar.
+      (First MSI built 2026-10-12: `LabGuide_0.1.0_x64_en-US.msi`, 22 MiB,
+      unsigned. Signing is the remaining open item under Phase 0.)
 - [ ] macOS: signed + notarized app bundle; sidecar inside the bundle
       signed with the same team ID.
 - [ ] Tauri updater wired to a static update manifest (start with static
-      hosting; no update server to run).
+      hosting; no update server to run). Requires updater signing keys.
 - [ ] First-run experience: permission preflights surfaced before first
       capture; readable guidance when a permission is missing.
 
