@@ -5,48 +5,84 @@
 //! between the webview and the sidecar's stdio. No product logic lives
 //! here; see docs/Desktop-App-Migration-Plan.md.
 //!
+//! The sidecar is spawned with std::process directly (not
+//! tauri-plugin-shell): the plugin's pipe-reader path dropped events in
+//! practice, and direct stdio gives bounded, debuggable forwarding.
+//!
 //! The webview never gets shell access: it can only invoke `sidecar_send`
 //! and listen for `sidecar-line` / `sidecar-event` emissions.
 
+use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
+use std::process::{ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use serde_json::json;
 use tauri::{Emitter, Manager, RunEvent, State};
-use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use tauri_plugin_shell::ShellExt;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 /// Delay before respawning a dead sidecar. Fixed for now; a backoff
 /// sequence can replace it if flapping shows up in the field.
 const RESPAWN_DELAY: Duration = Duration::from_millis(1500);
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 struct SidecarState {
-    child: Mutex<Option<CommandChild>>,
+    /// The child's stdin. The Child itself lives in the watcher thread,
+    /// which reaps it; a dead pipe surfaces as a write error in
+    /// `sidecar_send` and as a terminated event from the watcher.
+    stdin: Mutex<Option<ChildStdin>>,
     shutting_down: AtomicBool,
 }
 
-/// Spawn the sidecar and forward its output to the webview.
-///
-/// Runs from the setup hook and again from the supervision thread after a
-/// termination, so it must tolerate being called concurrently.
+fn sidecar_path() -> Result<PathBuf, String> {
+    // Dev: target/debug/. Bundled: install dir, next to the main exe —
+    // both match where the CLI/bundler places externalBin binaries.
+    let exe = std::env::current_exe().map_err(|err| err.to_string())?;
+    let dir = exe.parent().ok_or("executable has no parent directory")?;
+    #[cfg(windows)]
+    let path = dir.join("labguide-sidecar.exe");
+    #[cfg(not(windows))]
+    let path = dir.join("labguide-sidecar");
+    Ok(path)
+}
+
 fn spawn_supervised(app: tauri::AppHandle) {
     let state = app.state::<SidecarState>();
     if state.shutting_down.load(Ordering::Relaxed) {
         return;
     }
 
-    let spawn_result = app
-        .shell()
-        .sidecar("labguide-sidecar")
-        .and_then(|command| command.spawn());
-    let (mut receiver, child) = match spawn_result {
-        Ok(pair) => {
-            eprintln!("sidecar: spawned");
-            pair
-        }
+    let path = match sidecar_path() {
+        Ok(path) => path,
         Err(err) => {
-            eprintln!("sidecar: spawn failed: {err}");
+            eprintln!("sidecar: could not resolve path: {err}");
+            let _ = app.emit(
+                "sidecar-event",
+                json!({"kind": "spawn-failed", "message": err}),
+            );
+            schedule_respawn(app);
+            return;
+        }
+    };
+
+    let mut command = Command::new(&path);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            eprintln!("sidecar: spawn failed ({path:?}): {err}");
             let _ = app.emit(
                 "sidecar-event",
                 json!({"kind": "spawn-failed", "message": err.to_string()}),
@@ -55,53 +91,97 @@ fn spawn_supervised(app: tauri::AppHandle) {
             return;
         }
     };
-    *state.child.lock().expect("sidecar state poisoned") = Some(child);
 
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = receiver.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    let _ = app.emit("sidecar-line", String::from_utf8_lossy(&line).to_string());
+    let stdout = child.stdout.take().expect("stdout was piped");
+    let stderr = child.stderr.take().expect("stderr was piped");
+    let stdin = child.stdin.take().expect("stdin was piped");
+    *state.stdin.lock().expect("sidecar state poisoned") = Some(stdin);
+    eprintln!("sidecar: spawned ({})", path.display());
+
+    // stdout → sidecar-line. Plain blocking thread; lines are short JSON-RPC
+    // messages, so line buffering costs nothing and keeps ordering.
+    let forward_app = app.clone();
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    let _ = forward_app.emit("sidecar-line", line);
                 }
-                // Diagnostics channel only (the service never logs captured
-                // content to stderr). Surfaced for the degraded-state banner.
-                CommandEvent::Stderr(line) => {
-                    let _ = app.emit(
-                        "sidecar-event",
-                        json!({"kind": "stderr", "message": String::from_utf8_lossy(&line)}),
-                    );
-                }
-                CommandEvent::Error(err) => {
-                    let _ = app.emit(
-                        "sidecar-event",
-                        json!({"kind": "error", "message": err.to_string()}),
-                    );
-                }
-                CommandEvent::Terminated(status) => {
-                    let state = app.state::<SidecarState>();
-                    *state.child.lock().expect("sidecar state poisoned") = None;
-                    if state.shutting_down.load(Ordering::Relaxed) {
-                        return;
-                    }
-                    eprintln!(
-                        "sidecar: terminated (code {:?}); respawning in {:?}",
-                        status.code, RESPAWN_DELAY
-                    );
-                    let _ = app.emit(
-                        "sidecar-event",
-                        json!({"kind": "terminated", "code": status.code}),
-                    );
-                    schedule_respawn(app);
+                Err(err) => {
+                    eprintln!("sidecar: stdout read error: {err}");
                     return;
                 }
-                _ => {}
             }
         }
+    });
+
+    // stderr → sidecar-event (diagnostics only; the service never logs
+    // captured content to stderr).
+    let forward_app = app.clone();
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    let _ = forward_app.emit(
+                        "sidecar-event",
+                        json!({"kind": "stderr", "message": line}),
+                    );
+                }
+                Err(_) => return,
+            }
+        }
+    });
+
+    // Watcher: own the Child, reap it, emit terminated, respawn.
+    let watcher_app = app.clone();
+    std::thread::spawn(move || {
+        let status = child.wait();
+        *watcher_app
+            .state::<SidecarState>()
+            .stdin
+            .lock()
+            .expect("sidecar state poisoned") = None;
+        if watcher_app
+            .state::<SidecarState>()
+            .shutting_down
+            .load(Ordering::Relaxed)
+        {
+            return;
+        }
+        match status {
+            Ok(status) => {
+                eprintln!(
+                    "sidecar: exited (code {:?}); respawning in {RESPAWN_DELAY:?}",
+                    status.code()
+                );
+                let _ = watcher_app.emit(
+                    "sidecar-event",
+                    json!({"kind": "terminated", "code": status.code()}),
+                );
+            }
+            Err(err) => {
+                eprintln!("sidecar: wait failed: {err}");
+                let _ = watcher_app.emit(
+                    "sidecar-event",
+                    json!({"kind": "error", "message": err.to_string()}),
+                );
+            }
+        }
+        schedule_respawn(watcher_app);
     });
 }
 
 fn schedule_respawn(app: tauri::AppHandle) {
-    if app.state::<SidecarState>().shutting_down.load(Ordering::Relaxed) {
+    if app
+        .state::<SidecarState>()
+        .shutting_down
+        .load(Ordering::Relaxed)
+    {
         return;
     }
     std::thread::spawn(move || {
@@ -113,23 +193,34 @@ fn schedule_respawn(app: tauri::AppHandle) {
 fn graceful_shutdown(app: &tauri::AppHandle) {
     let state = app.state::<SidecarState>();
     state.shutting_down.store(true, Ordering::Relaxed);
-    let child = state.child.lock().expect("sidecar state poisoned").take();
-    if let Some(mut child) = child {
+    let stdin = state
+        .stdin
+        .lock()
+        .expect("sidecar state poisoned")
+        .take();
+    if let Some(mut stdin) = stdin {
         // Shutdown is a request, not a kill (AX-wedge finding): ask the
-        // service to stop, give it a moment to drain, then force.
+        // service to stop, give it a moment to drain, then close stdin so
+        // the reader loop sees EOF and exits.
         let request = json!({"jsonrpc": "2.0", "id": -1, "method": "shutdown"}).to_string();
-        let _ = child.write(format!("{request}\n").as_bytes());
+        let _ = stdin.write_all(format!("{request}\n").as_bytes());
+        let _ = stdin.flush();
         std::thread::sleep(Duration::from_millis(500));
-        let _ = child.kill();
+        drop(stdin);
+        std::thread::sleep(Duration::from_millis(500));
     }
 }
 
 /// Send one JSON-RPC line to the sidecar. The webview's only write path.
 #[tauri::command]
 fn sidecar_send(state: State<'_, SidecarState>, line: String) -> Result<(), String> {
-    let mut guard = state.child.lock().expect("sidecar state poisoned");
+    let mut guard = state.stdin.lock().expect("sidecar state poisoned");
     match guard.as_mut() {
-        Some(child) => child.write(line.as_bytes()).map_err(|err| err.to_string()),
+        Some(stdin) => stdin
+            .write_all(line.as_bytes())
+            .and_then(|_| stdin.write_all(b"\n"))
+            .and_then(|_| stdin.flush())
+            .map_err(|err| err.to_string()),
         None => Err("sidecar not running".into()),
     }
 }
@@ -138,10 +229,9 @@ fn sidecar_send(state: State<'_, SidecarState>, line: String) -> Result<(), Stri
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             app.manage(SidecarState {
-                child: Mutex::new(None),
+                stdin: Mutex::new(None),
                 shutting_down: AtomicBool::new(false),
             });
             spawn_supervised(app.handle().clone());
