@@ -46,6 +46,16 @@
     <platform name="linux" status="deferred">
       <note>UnsupportedAdapter: text-only + primary screenshot fallback.</note>
     </platform>
+    <initiative name="desktop-app" status="proposed">
+      <note>
+        Migration plan drafted (docs/Desktop-App-Migration-Plan.md): Tauri 2 +
+        React shell with a PyInstaller Python sidecar owning capture and the
+        backend request; hotkey stays in the sidecar; Textual TUI remains
+        supported until desktop acceptance passes. Not started; driver is
+        campus-fleet deployment. Do not begin until macOS adapter validation
+        rows that are not TUI-dependent are closed out.
+      </note>
+    </initiative>
   </current-state>
 
   <next-actions>
@@ -101,6 +111,7 @@
     <doc path="docs/Windows-UI-Context-Architecture.md" role="durable design and data contracts"/>
     <doc path="docs/Backend-API-Spec.md" role="OpenAI-compatible payload contract"/>
     <doc path="AGENTS.md" role="engineering rules, invariants, code map"/>
+    <doc path="docs/Desktop-App-Migration-Plan.md" role="proposed TUI-to-Tauri migration; fleet deployment requirements"/>
   </key-documents>
 
   <invariants>
