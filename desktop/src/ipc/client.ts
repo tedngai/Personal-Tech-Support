@@ -125,12 +125,12 @@ export class SidecarClient {
         pending.resolve(payload["result"]);
       } else if (isRecord(payload["error"])) {
         const error = payload["error"];
+        const data = isRecord(error["data"]) ? error["data"] : undefined;
         pending.reject({
           code: typeof error["code"] === "number" ? error["code"] : -32603,
           message: typeof error["message"] === "string" ? error["message"] : "unknown error",
-          stage: typeof error["data"]?.["stage"] === "string" ? error["data"]["stage"] : undefined,
-          category:
-            typeof error["data"]?.["category"] === "string" ? error["data"]["category"] : undefined,
+          stage: typeof data?.["stage"] === "string" ? data["stage"] : undefined,
+          category: typeof data?.["category"] === "string" ? data["category"] : undefined,
         });
       } else {
         pending.reject({ code: -32603, message: "malformed response" });

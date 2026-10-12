@@ -1,0 +1,24 @@
+/* LabGuide theme: the only place literal colors exist. Components use
+   token classes only (bg-canvas, border-edge, text-ink-dim, border-l-role-*),
+   mirroring the `$`-token rule from labguide.tcss. */
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #101418;
+  --color-surface: #1a2026;
+  --color-edge: #2a323a;
+  --color-ink: #e6ebf0;
+  --color-ink-dim: #9aa7b2;
+  --color-accent: #4cc2ff;
+  --color-role-user: #4c8dff;
+  --color-role-assistant: #35c284;
+  --color-role-system: #8a97a3;
+  --color-role-error: #ff5c69;
+  --color-role-capture: #ffa94c;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}

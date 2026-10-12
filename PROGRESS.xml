@@ -56,9 +56,17 @@
         error taxonomy, labguide.service stdio service owning pending
         attachment, history, hotkey, and session log; every call bounded;
         graceful shutdown; 141 unit tests passing. Smoke-tested through the
-        real stdio entry point on Windows. Next: Phase 2 Tauri shell
-        (scaffold, sidecar supervision, React transcript/composer/pending-
-        capture), then packaging in Phase 3. Plan Phase 0 decision gates
+        real stdio entry point on Windows. Phase 2 started: Tauri 2 + React
+        scaffold verified with cargo check (MSVC toolchain), sidecar packaged
+        via PyInstaller and smoke-tested as a standalone exe, Rust-side
+        spawn/supervision/JSON-RPC forwarding/graceful shutdown implemented
+        (shell-plugin registration panic found in first live run and fixed).
+        Typed TS IPC client implemented and contract-locked to the Python
+        service via golden fixtures generated from the Python contract tests
+        (12 vitest cases). React UI implemented: transcript (role-coded,
+        markdown for assistant answers only), composer, pending-capture
+        panel, degraded banner, Tailwind token theme. Remaining: live
+        tauri-dev verification of the full loop, tray, single-instance. Plan Phase 0 decision gates
         (signing certs, MDM confirmation, fixed identity) remain open and
         block fleet release, not development.
       </note>
