@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ctypes
 import ntpath
+import os
 import sys
 from ctypes import wintypes
 from dataclasses import dataclass
@@ -40,6 +41,16 @@ _GW_HWNDNEXT = 2
 # Window classes of terminals LabGuide may run inside. Capturing these means
 # the user pointed the global hotkey at the support tool itself.
 _TERMINAL_CLASS_NAMES = {"ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS"}
+
+# Desktop shell windows. "The window below" must never resolve to the
+# desktop itself, or a below-mode capture silently becomes a full-screen
+# desktop crop.
+_SHELL_CLASS_NAMES = {"Progman", "WorkerW"}
+
+# PID of the desktop shell process (desktop.exe), set by the Tauri shell so
+# the sidecar can recognize the LabGuide GUI as its own window. The TUI
+# needs no such marker: it matches its own pid (or console) directly.
+_OWN_SHELL_PID_ENV = "LABGUIDE_OWN_PID"
 
 if sys.platform == "win32":
     _user32 = ctypes.windll.user32
@@ -127,9 +138,12 @@ def is_own_terminal(hwnd: int) -> bool:
         pid = get_window_pid(hwnd)
     except WindowIdentityError:
         return False
-    import os
-
-    return pid == os.getpid()
+    if pid == os.getpid():
+        return True
+    # Desktop app: the GUI process is desktop.exe, a different process from
+    # this sidecar. The shell announces its pid at spawn time.
+    own_shell_pid = os.environ.get(_OWN_SHELL_PID_ENV)
+    return bool(own_shell_pid and pid == int(own_shell_pid))
 
 
 def get_window_pid(hwnd: int) -> int:
@@ -206,15 +220,25 @@ class WindowCandidate:
     visible: bool
     title: str
     is_terminal: bool
+    is_shell_desktop: bool = False
 
 
 def select_window_below(candidates: list[WindowCandidate]) -> int | None:
     """Pick the window the user most likely means from z-order candidates.
 
     Pure function, unit-tested. Prefers the first visible, non-terminal,
-    titled window; falls back to any visible non-terminal window.
+    non-shell, titled window; falls back to any remaining visible window.
+    Shell desktop windows (Progman/WorkerW) are never capture targets: with
+    the desktop app foreground they sit directly below in z-order, and
+    selecting one silently turns a window capture into a full-screen crop.
     """
-    usable = [candidate for candidate in candidates if candidate.visible and not candidate.is_terminal]
+    usable = [
+        candidate
+        for candidate in candidates
+        if candidate.visible
+        and not candidate.is_terminal
+        and not candidate.is_shell_desktop
+    ]
     for candidate in usable:
         if candidate.title.strip():
             return candidate.hwnd
@@ -242,6 +266,7 @@ def get_window_below(hwnd: int, *, max_hops: int = 20) -> int:
                 visible=bool(_user32.IsWindowVisible(wintypes.HWND(current))),
                 title=get_window_title(current),
                 is_terminal=is_own_terminal(current),
+                is_shell_desktop=get_window_class_name(current) in _SHELL_CLASS_NAMES,
             )
         )
     return select_window_below(candidates) or 0
