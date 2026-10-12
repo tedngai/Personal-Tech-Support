@@ -81,6 +81,17 @@ def build(backend: str = "onefile") -> Path:
 
     final = OUTPUT_DIR / f"{BINARY_BASENAME}-{target_triple()}{suffix}"
     final.write_bytes(built.read_bytes())
+
+    # Dev convenience: put the repo's labguide.toml next to the built sidecar
+    # (exe-dir lookup) and into target/debug where `tauri dev` runs it, so
+    # the desktop sidecar uses the same backend as the TUI. Config is
+    # machine-specific and stays out of git.
+    repo_config = REPO_ROOT / "labguide.toml"
+    if repo_config.is_file():
+        final.parent.joinpath("labguide.toml").write_bytes(repo_config.read_bytes())
+        debug_dir = REPO_ROOT / "desktop" / "src-tauri" / "target" / "debug"
+        if debug_dir.is_dir():
+            debug_dir.joinpath("labguide.toml").write_bytes(repo_config.read_bytes())
     return final
 
 

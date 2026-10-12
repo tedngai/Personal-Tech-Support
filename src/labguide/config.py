@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import sys
 
 try:
     import tomllib
@@ -11,6 +12,57 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
 
 
 DEFAULT_CONFIG_PATH = Path("labguide.toml")
+
+
+def _sidecar_exe_dir() -> Path:
+    """Directory of the running executable (sidecar exe dir when packaged)."""
+    return Path(sys.executable).resolve().parent
+
+
+def _user_config_dir() -> Path:
+    """Per-user config directory for LabGuide on this platform."""
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA")
+        if base:
+            return Path(base) / "LabGuide"
+        return Path.home() / "AppData" / "Roaming" / "LabGuide"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "LabGuide"
+    return Path.home() / ".config" / "labguide"
+
+
+def resolve_config_path(explicit: Path | None = None) -> Path:
+    """Locate labguide.toml without depending on the process CWD alone.
+
+    The sidecar is spawned by the desktop shell with a CWD the user does
+    not control (src-tauri during dev, the install dir when bundled), so
+    the config is searched in a fixed order:
+
+    1. explicit path argument
+    2. LABGUIDE_CONFIG environment variable
+    3. labguide.toml in the current directory (TUI convention)
+    4. labguide.toml next to the running executable (sidecar convention:
+       next to labguide-sidecar.exe in dev and in the install dir)
+    5. the per-user config directory (MDM-independent user settings)
+
+    Returns the first existing candidate; otherwise the CWD path so the
+    error message names the conventional location.
+    """
+    if explicit is not None:
+        return explicit
+    env_path = os.environ.get("LABGUIDE_CONFIG")
+    if env_path:
+        return Path(env_path)
+    cwd = Path.cwd()
+    candidates = [
+        cwd / "labguide.toml",
+        _sidecar_exe_dir() / "labguide.toml",
+        _user_config_dir() / "labguide.toml",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return cwd / "labguide.toml"
 
 
 @dataclass(slots=True)
@@ -66,7 +118,7 @@ class AppConfig:
 
 
 def load_config(config_path: Path | None = None) -> AppConfig:
-    path = config_path or Path(os.environ.get("LABGUIDE_CONFIG", DEFAULT_CONFIG_PATH))
+    path = resolve_config_path(config_path)
     raw = _read_toml(path) if path.exists() else {}
     backend_defaults = BackendConfig()
     capture_defaults = CaptureConfig()
