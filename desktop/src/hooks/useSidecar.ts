@@ -225,6 +225,15 @@ export function useSidecar() {
     }
   }, [append]);
 
+  const refreshPending = useCallback(async () => {
+    try {
+      const result = await sidecar.request<AttachmentGetResult>("attachment.get", {}, 15000);
+      setPending(result.attachment);
+    } catch (err) {
+      append("error", `Attachment unavailable: ${formatIpcError(err)}`);
+    }
+  }, [append]);
+
   return {
     messages,
     pending,
@@ -232,9 +241,11 @@ export function useSidecar() {
     connection,
     inFlight,
     captureWindow,
+    refreshPending,
     submitPrompt,
     discard,
     resetConversation,
+    notice: append,
   };
 }
 

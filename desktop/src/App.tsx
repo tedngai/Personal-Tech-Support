@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Composer } from "./features/composer/Composer";
 import { PendingCapturePanel } from "./features/pending-capture/PendingCapturePanel";
+import { WindowPicker } from "./features/pending-capture/WindowPicker";
 import { Transcript } from "./features/transcript/Transcript";
 import { useSidecar } from "./hooks/useSidecar";
 
@@ -12,10 +13,13 @@ export default function App() {
     connection,
     inFlight,
     captureWindow,
+    refreshPending,
     submitPrompt,
     discard,
     resetConversation,
+    notice,
   } = useSidecar();
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -52,15 +56,30 @@ export default function App() {
         <Transcript messages={messages} />
       </div>
 
+      {pickerOpen && (
+        <WindowPicker
+          onCaptureStarted={() => void refreshPending()}
+          onClose={() => setPickerOpen(false)}
+          onNotice={(role, message) => notice(role, message)}
+        />
+      )}
+
       <div className="p-4 pt-0 flex flex-col gap-3">
         <PendingCapturePanel attachment={pending} disabled={inFlight} onDiscard={() => void discard()} />
         <div className="flex gap-2">
           <button
             className="bg-role-capture text-canvas text-sm font-semibold rounded-md px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={degraded || inFlight}
+            onClick={() => setPickerOpen(true)}
+          >
+            Capture window…
+          </button>
+          <button
+            className="bg-surface border border-edge text-ink text-sm rounded-md px-4 py-2 hover:bg-edge disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={degraded || inFlight}
             onClick={() => void captureWindow()}
           >
-            Capture window
+            Capture screen
           </button>
           <button
             className="border border-edge text-ink-dim text-sm rounded-md px-3 py-2 hover:bg-surface disabled:opacity-40"

@@ -22,6 +22,21 @@ use std::time::Duration;
 use serde_json::json;
 use tauri::{Emitter, Manager, RunEvent, State};
 
+/// Show or hide the main window. Used by the window picker so LabGuide's
+/// own window does not occlude the desktop-region capture of the target.
+#[tauri::command]
+fn set_window_visible(app: tauri::AppHandle, visible: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        if visible {
+            window.show().map_err(|err| err.to_string())?;
+            let _ = window.set_focus();
+        } else {
+            window.hide().map_err(|err| err.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -240,7 +255,7 @@ pub fn run() {
             spawn_supervised(app.handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_send])
+        .invoke_handler(tauri::generate_handler![sidecar_send, set_window_visible])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {

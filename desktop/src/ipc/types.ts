@@ -98,6 +98,17 @@ export interface DiscardResult {
   discarded: boolean;
 }
 
+/** One entry from windows.list — a user-selectable capture target. */
+export interface WindowChoice {
+  id: number;
+  title: string;
+  process_name: string;
+}
+
+export interface WindowsListResult {
+  windows: WindowChoice[];
+}
+
 /** Shape of a `capture.completed` event's data. */
 export interface CaptureCompletedEvent {
   capture: CaptureSummary;
