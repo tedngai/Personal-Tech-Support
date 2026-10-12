@@ -130,6 +130,7 @@ fn sidecar_send(state: State<'_, SidecarState>, line: String) -> Result<(), Stri
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             app.manage(SidecarState {
                 child: Mutex::new(None),
