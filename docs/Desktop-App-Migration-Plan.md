@@ -146,17 +146,24 @@ include captured content.
 
 ### Phase 1: Sidecar extraction (no UI change)
 
-- [ ] `labguide.service`: long-running JSON-RPC stdio service wrapping the
+- [x] `labguide.service`: long-running JSON-RPC stdio service wrapping the
       existing capture pipeline, client, and config; TUI code path untouched.
-- [ ] Every IPC call bounded by timeout; errors mapped to the
+- [x] Every IPC call bounded by timeout; errors mapped to the
       stage/category taxonomy.
-- [ ] Hotkey adapters register inside the service; events emitted over the
+- [x] Hotkey adapters register inside the service; events emitted over the
       same channel.
-- [ ] Contract tests for the IPC envelope (pure, cross-platform, no OS APIs).
-- [ ] Graceful-shutdown contract: sidecar drains AX transactions before exit
+- [x] Contract tests for the IPC envelope (pure, cross-platform, no OS APIs).
+- [x] Graceful-shutdown contract: sidecar drains AX transactions before exit
       (AX-wedge finding); shell-initiated shutdown is a request, not a kill.
-- [ ] A `--stdin-swap` test harness mode so the service can be exercised
-      from unit tests on any OS.
+- [x] A transport-injection test harness so the service can be exercised
+      from unit tests on any OS (implemented as injectable reader/writer
+      plus `post_line`/`pump` seams rather than a `--stdin-swap` CLI flag;
+      same intent, cleaner test surface).
+
+  Phase 1 note: implemented and smoke-tested through the real stdio entry
+  point (`python -m labguide.service`) on Windows with the real adapter.
+  Real-hotkey event flow is contract-tested with a fake adapter; validation
+  with real Win32/pynput hotkeys happens in the Phase 5 acceptance pass.
 
 ### Phase 2: Tauri shell
 

@@ -88,6 +88,10 @@ screenshot pixels. See `PROGRESS.xml` for the full action list.
 - `src/labguide/global_hotkey.py`: Win32 hotkey adapter (Windows only)
 - `src/labguide/ui_probe.py`: isolated, read-only UIA probe (Windows only)
 - `src/labguide/ui_outline.py`: pure outline projection, truncation, redaction
+- `src/labguide/ipc.py`: pure JSON-RPC envelope and error taxonomy for the
+  sidecar IPC channel
+- `src/labguide/service/`: stdio sidecar service wrapping capture, hotkey,
+  pending attachment, and backend client (desktop-app migration phase 1)
 - `src/labguide/win32_window.py`: Win32 window identity, bounds, z-order
 - `src/labguide/platforms/`: adapter contract plus per-OS adapters
   - `contracts.py`: capabilities, adapter protocol, unsupported fallback

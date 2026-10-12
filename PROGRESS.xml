@@ -46,14 +46,21 @@
     <platform name="linux" status="deferred">
       <note>UnsupportedAdapter: text-only + primary screenshot fallback.</note>
     </platform>
-    <initiative name="desktop-app" status="proposed">
+    <initiative name="desktop-app" status="phase-1-implemented">
       <note>
         Migration plan drafted (docs/Desktop-App-Migration-Plan.md): Tauri 2 +
         React shell with a PyInstaller Python sidecar owning capture and the
         backend request; hotkey stays in the sidecar; Textual TUI remains
-        supported until desktop acceptance passes. Not started; driver is
-        campus-fleet deployment. Do not begin until macOS adapter validation
-        rows that are not TUI-dependent are closed out.
+        supported until desktop acceptance passes. Phase 1 (sidecar
+        extraction) implemented: labguide.ipc JSON-RPC envelope with domain
+        error taxonomy, labguide.service stdio service owning pending
+        attachment, history, hotkey, and session log; every call bounded;
+        graceful shutdown; 141 unit tests passing. Smoke-tested through the
+        real stdio entry point on Windows. Next: Phase 2 Tauri shell
+        (scaffold, sidecar supervision, React transcript/composer/pending-
+        capture), then packaging in Phase 3. Plan Phase 0 decision gates
+        (signing certs, MDM confirmation, fixed identity) remain open and
+        block fleet release, not development.
       </note>
     </initiative>
   </current-state>
