@@ -129,7 +129,7 @@ def result_response(request_id: int | str, result: dict[str, Any]) -> str:
 
 
 def error_response(
-    request_id: int | str,
+    request_id: int | str | None,
     code: int,
     message: str,
     *,
@@ -149,7 +149,7 @@ def error_response(
     )
 
 
-def error_from_exception(request_id: int | str, exc: Exception) -> str:
+def error_from_exception(request_id: int | str | None, exc: Exception) -> str:
     """Map a handler exception to an error response.
 
     Known failure types map to domain codes with stage/category data.
@@ -160,11 +160,12 @@ def error_from_exception(request_id: int | str, exc: Exception) -> str:
         return error_response(
             request_id, exc.code, str(exc), stage=exc.stage, category=exc.category
         )
-    stage, code, category = _map_exception(exc)
+    stage, code, category = map_exception(exc)
     return error_response(request_id, code, str(exc), stage=stage, category=category)
 
 
-def _map_exception(exc: Exception) -> tuple[str, int, str | None]:
+def map_exception(exc: Exception) -> tuple[str, int, str | None]:
+    """Map an exception to (stage, code, category) for errors and events."""
     # Imported lazily so this module stays importable without platform or
     # heavy dependencies and is unit-testable on any OS.
     from labguide.capture import CaptureError
