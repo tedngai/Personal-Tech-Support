@@ -410,7 +410,9 @@ class WindowPickerTests(unittest.TestCase):
         service, _ = make_service(FakeAdapter())
         response = call(service, 1, "windows.list")
         windows = response["result"]["windows"]
-        self.assertEqual(windows[0], {"id": 99, "title": "Firefox", "process_name": "firefox.exe"})
+        self.assertEqual(windows[0]["id"], 99)
+        self.assertEqual(windows[0]["title"], "Firefox")
+        self.assertEqual(windows[0]["process_name"], "firefox.exe")
         self.assertEqual(windows[1]["id"], 42)
 
     def test_capture_window_mode_captures_chosen_hwnd(self) -> None:

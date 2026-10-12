@@ -15,6 +15,7 @@ from ctypes import wintypes
 from dataclasses import dataclass
 
 from labguide.models import TargetWindow, WindowIdentityError
+from labguide.platforms.contracts import WindowChoice
 
 __all__ = [
     "WindowIdentityError",
@@ -56,8 +57,9 @@ _OWN_SHELL_PID_ENV = "LABGUIDE_OWN_PID"
 
 if sys.platform == "win32":
     _user32 = ctypes.windll.user32
-    _kernel32 = ctypes.windll.kernel32
+    _gdi32 = ctypes.windll.gdi32
     _dwmapi = ctypes.windll.dwmapi
+    _kernel32 = ctypes.windll.kernel32
 
     _user32.GetForegroundWindow.restype = wintypes.HWND
     _user32.IsWindow.argtypes = [wintypes.HWND]
@@ -225,15 +227,6 @@ class WindowCandidate:
     is_shell_desktop: bool = False
 
 
-@dataclass(frozen=True, slots=True)
-class WindowChoice:
-    """One user-selectable capture target for the window picker."""
-
-    hwnd: int
-    title: str
-    process_name: str
-
-
 def select_window_below(candidates: list[WindowCandidate]) -> int | None:
     """Pick the window the user most likely means from z-order candidates.
 
@@ -286,9 +279,107 @@ def get_window_below(hwnd: int, *, max_hops: int = 20) -> int:
 _ENUM_WINDOWS = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 _WS_EX_TOOLWINDOW = 0x0000_0080
 _GWL_EXSTYLE = -20
+_PW_RENDERFULLCONTENT = 0x00000002
+_DWMWA_CLOAKED = 14
+_BI_RGB = 0
 
 
-def list_candidate_windows(*, limit: int = 30) -> list[WindowChoice]:
+def capture_printwindow(hwnd: int):
+    """Window contents via PrintWindow, or None when the API cannot render it.
+
+    PW_RENDERFULLCONTENT asks DWM for the window's own pixels, including when
+    another window covers it. Does not change focus or z-order. Returns None
+    on any failure; callers fall back to a desktop-region crop.
+    """
+    from PIL import Image
+
+    if sys.platform != "win32" or not hwnd:
+        return None
+    rect = wintypes.RECT()
+    if not _user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+        return None
+    width = int(rect.right - rect.left)
+    height = int(rect.bottom - rect.top)
+    if width < 1 or height < 1 or width > 8000 or height > 8000:
+        return None
+
+    screen_dc = _user32.GetDC(0)
+    memory_dc = _gdi32.CreateCompatibleDC(screen_dc)
+    bitmap = _gdi32.CreateCompatibleBitmap(screen_dc, width, height)
+    previous = _gdi32.SelectObject(memory_dc, bitmap)
+    try:
+        rendered = _user32.PrintWindow(
+            wintypes.HWND(hwnd), memory_dc, _PW_RENDERFULLCONTENT
+        )
+        if not rendered:
+            rendered = _user32.PrintWindow(wintypes.HWND(hwnd), memory_dc, 0)
+        if not rendered:
+            return None
+        header = _BitmapInfoHeader()
+        header.biSize = ctypes.sizeof(header)
+        header.biWidth = width
+        header.biHeight = -height  # top-down
+        header.biPlanes = 1
+        header.biBitCount = 32
+        header.biCompression = _BI_RGB
+        buffer = ctypes.create_string_buffer(width * height * 4)
+        copied = _gdi32.GetDIBits(
+            memory_dc, bitmap, 0, height, buffer, ctypes.byref(header), 0
+        )
+        if not copied:
+            return None
+        image = Image.frombuffer("RGB", (width, height), buffer, "raw", "BGRX", 0, 1)
+        return image.copy()
+    except Exception:
+        return None
+    finally:
+        _gdi32.SelectObject(memory_dc, previous)
+        _gdi32.DeleteObject(bitmap)
+        _gdi32.DeleteDC(memory_dc)
+        _user32.ReleaseDC(0, screen_dc)
+
+
+class _BitmapInfoHeader(ctypes.Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD),
+        ("biWidth", wintypes.LONG),
+        ("biHeight", wintypes.LONG),
+        ("biPlanes", wintypes.WORD),
+        ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD),
+        ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", wintypes.LONG),
+        ("biYPelsPerMeter", wintypes.LONG),
+        ("biClrUsed", wintypes.DWORD),
+        ("biClrImportant", wintypes.DWORD),
+    ]
+
+
+def _is_cloaked(hwnd: int) -> bool:
+    """True for UWP windows the shell has hidden (virtual desktops, etc.)."""
+    cloaked = wintypes.DWORD()
+    result = _dwmapi.DwmGetWindowAttribute(
+        wintypes.HWND(hwnd),
+        _DWMWA_CLOAKED,
+        ctypes.byref(cloaked),
+        ctypes.sizeof(cloaked),
+    )
+    return result == 0 and bool(cloaked.value)
+
+
+def _window_thumbnail(hwnd: int) -> str | None:
+    from labguide.capture import encode_thumbnail, is_blank_image
+
+    image = capture_printwindow(hwnd)
+    if image is None or is_blank_image(image):
+        return None
+    try:
+        return encode_thumbnail(image)
+    except Exception:
+        return None
+
+
+def list_candidate_windows(*, limit: int = 16) -> list[WindowChoice]:
     """User-selectable capture targets, top-to-bottom in z-order.
 
     Drives the desktop app's window picker. Excludes shell desktop windows,
@@ -303,6 +394,10 @@ def list_candidate_windows(*, limit: int = 30) -> list[WindowChoice]:
         if len(results) >= limit:
             return False
         if not _user32.IsWindowVisible(wintypes.HWND(hwnd)):
+            return True
+        if _user32.IsIconic(wintypes.HWND(hwnd)) or _is_cloaked(hwnd):
+            # Minimized and cloaked windows cannot be captured; offering
+            # them only produces a background error the picker hides.
             return True
         ex_style = _user32.GetWindowLongW(wintypes.HWND(hwnd), _GWL_EXSTYLE)
         if ex_style & _WS_EX_TOOLWINDOW:
@@ -320,7 +415,12 @@ def list_candidate_windows(*, limit: int = 30) -> list[WindowChoice]:
         except WindowIdentityError:
             return True
         results.append(
-            WindowChoice(hwnd=hwnd, title=title, process_name=get_process_name(pid))
+            WindowChoice(
+                hwnd=hwnd,
+                title=title,
+                process_name=get_process_name(pid),
+                thumbnail_base64=_window_thumbnail(hwnd),
+            )
         )
         return True
 

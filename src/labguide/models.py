@@ -218,6 +218,9 @@ class CapturedScreenshot:
     # Unique per capture event. Used so a slow in-flight request can never
     # clear a newer pending attachment by accident.
     capture_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    # Stage notes for the user (never captured content). Example: window
+    # pixels fell back to a desktop crop because PrintWindow returned blank.
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

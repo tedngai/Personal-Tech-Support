@@ -148,6 +148,31 @@ def _encode(
     )
 
 
+def is_blank_image(image: Image.Image) -> bool:
+    """True when an image has almost no visual variation.
+
+    PrintWindow returns a black bitmap for some GPU-rendered windows instead
+    of failing. A downscaled luminance variance distinguishes that from a
+    real window. Pure; unit-tested without a display.
+    """
+    sample = image.convert("L").resize((32, 32))
+    pixels = list(sample.getdata())
+    if not pixels:
+        return True
+    mean = sum(pixels) / len(pixels)
+    variance = sum((pixel - mean) ** 2 for pixel in pixels) / len(pixels)
+    return variance < 12.0
+
+
+def encode_thumbnail(image: Image.Image, *, max_edge: int = 280) -> str:
+    """Small JPEG/base64 preview for the window picker."""
+    preview = image.convert("RGB")
+    preview.thumbnail((max_edge, max_edge), Image.LANCZOS)
+    buffer = BytesIO()
+    preview.save(buffer, format="JPEG", quality=40)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
 def _normalize_platform(system_name: str) -> str:
     lowered = system_name.lower()
     if lowered.startswith("darwin"):

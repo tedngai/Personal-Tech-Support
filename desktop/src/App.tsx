@@ -58,7 +58,7 @@ export default function App() {
 
       {pickerOpen && (
         <WindowPicker
-          onCaptureStarted={() => void refreshPending()}
+          onCaptured={() => void refreshPending()}
           onClose={() => setPickerOpen(false)}
           onNotice={(role, message) => notice(role, message)}
         />

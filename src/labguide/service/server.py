@@ -321,7 +321,12 @@ class SidecarService:
         choices = self._adapter.list_capture_targets()
         return {
             "windows": [
-                {"id": choice.hwnd, "title": choice.title, "process_name": choice.process_name}
+                {
+                    "id": choice.hwnd,
+                    "title": choice.title,
+                    "process_name": choice.process_name,
+                    "thumbnail_base64": choice.thumbnail_base64,
+                }
                 for choice in choices
             ]
         }
@@ -619,6 +624,7 @@ def _capture_summary(screenshot: CapturedScreenshot) -> dict[str, Any]:
         "height": screenshot.context.screen_height,
         "target": _target_payload(screenshot.target),
         "ui": _ui_payload(screenshot.ui),
+        "warnings": list(screenshot.warnings),
     }
     ui = screenshot.ui
     if ui is not None and ui.status in (UI_STATUS_COMPLETE, UI_STATUS_PARTIAL):

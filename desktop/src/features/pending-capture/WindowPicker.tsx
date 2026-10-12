@@ -1,105 +1,112 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { WindowChoice } from "../../ipc/types";
-import type { IpcErrorInfo } from "../../ipc/types";
 import { sidecar } from "../../ipc/client";
-import type { CaptureStartResult } from "../../ipc/types";
+import type { CaptureStartResult, IpcErrorInfo, WindowChoice } from "../../ipc/types";
 import { formatIpcError } from "../../hooks/useSidecar";
 
 interface WindowPickerProps {
-  onCaptureStarted: () => void;
+  onCaptured: () => void;
   onClose: () => void;
-  onNotice: (role: "error" | "system" | "capture", message: string) => void;
+  onNotice: (role: "capture", message: string) => void;
 }
 
-const HIDE_SETTLE_MS = 250;
-
 /**
- * Lets the user pick which window to capture instead of guessing from
- * z-order. While the capture runs, LabGuide's own window is hidden so it
- * cannot occlude the target (the Windows adapter crops the desktop region).
+ * Thumbnail grid of capturable windows. Errors stay in this panel so the
+ * user is never stranded in the picker while the message lands behind it.
+ * Capture does not hide or restack windows; PrintWindow reads the target's
+ * own pixels when the OS allows it.
  */
-export function WindowPicker({ onCaptureStarted, onClose, onNotice }: WindowPickerProps) {
+export function WindowPicker({ onCaptured, onClose, onNotice }: WindowPickerProps) {
   const [windows, setWindows] = useState<WindowChoice[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     sidecar
-      .request<{ windows: WindowChoice[] }>("windows.list", {}, 15000)
+      .request<{ windows: WindowChoice[] }>("windows.list", {}, 20000)
       .then((result) => {
         if (!cancelled) setWindows(result.windows);
       })
       .catch((err: IpcErrorInfo) => {
-        if (!cancelled) onNotice("error", `Could not list windows: ${formatIpcError(err)}`);
+        if (!cancelled) setError(`Could not list windows: ${formatIpcError(err)}`);
       });
     return () => {
       cancelled = true;
     };
-  }, [onNotice]);
+  }, []);
 
   const capture = async (choice: WindowChoice) => {
     setBusyId(choice.id);
-    let hidden = false;
+    setError(null);
     try {
-      await invoke("set_window_visible", { visible: false });
-      hidden = true;
-      await new Promise((resolve) => setTimeout(resolve, HIDE_SETTLE_MS));
-      const result = await sidecar.request<CaptureStartResult>(
-        "capture.start",
-        { mode: "window", hwnd: choice.id },
-      );
-      onCaptureStarted();
+      const result = await sidecar.request<CaptureStartResult>("capture.start", {
+        mode: "window",
+        hwnd: choice.id,
+      });
+      const warning = result.capture.warnings?.[0];
       onNotice(
         "capture",
-        `Captured ${choice.process_name} "${choice.title}" — ${result.capture.width}x${result.capture.height}.`,
+        warning
+          ? `Captured ${choice.process_name} "${choice.title}". ${warning}`
+          : `Captured ${choice.process_name} "${choice.title}".`,
       );
+      onCaptured();
+      onClose();
     } catch (err) {
-      onNotice("error", `Capture failed: ${formatIpcError(err)}`);
-    } finally {
-      if (hidden) {
-        try {
-          await invoke("set_window_visible", { visible: true });
-        } catch {
-          // Showing the window must never strand the user without the app.
-        }
-      }
+      setError(formatIpcError(err));
       setBusyId(null);
     }
   };
 
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-canvas/70 p-6">
-      <div className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-3xl">
         <div className="flex items-center px-4 py-3 border-b border-edge">
           <h2 className="text-sm font-semibold text-ink">Capture which window?</h2>
-          <button
-            className="ml-auto text-ink-dim hover:text-ink text-sm"
-            onClick={onClose}
-          >
+          <button className="ml-auto text-ink-dim hover:text-ink text-sm" onClick={onClose}>
             Cancel
           </button>
         </div>
-        <div className="max-h-80 overflow-y-auto p-2">
-          {windows === null && (
-            <div className="px-3 py-6 text-sm text-ink-dim text-center">Loading windows…</div>
+        {error && (
+          <div className="mx-4 mt-3 rounded-md border border-role-error bg-role-error/10 px-3 py-2 text-sm text-role-error">
+            {error}
+          </div>
+        )}
+        <div className="max-h-[70vh] overflow-y-auto p-4">
+          {windows === null && !error && (
+            <div className="py-10 text-sm text-ink-dim text-center">Loading windows…</div>
           )}
           {windows !== null && windows.length === 0 && (
-            <div className="px-3 py-6 text-sm text-ink-dim text-center">
-              No other capturable windows found.
+            <div className="py-10 text-sm text-ink-dim text-center">
+              No other capturable windows found. Minimized windows are omitted.
             </div>
           )}
-          {windows?.map((choice) => (
-            <button
-              key={choice.id}
-              className="w-full text-left px-3 py-2 rounded-md hover:bg-edge disabled:opacity-40"
-              disabled={busyId !== null}
-              onClick={() => void capture(choice)}
-            >
-              <div className="text-sm text-ink truncate">{choice.title}</div>
-              <div className="text-xs text-ink-dim">{choice.process_name}</div>
-            </button>
-          ))}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {windows?.map((choice) => (
+              <button
+                key={choice.id}
+                className="text-left rounded-md border border-edge bg-canvas hover:border-accent disabled:opacity-40 overflow-hidden"
+                disabled={busyId !== null}
+                onClick={() => void capture(choice)}
+              >
+                <div className="h-28 bg-edge flex items-center justify-center">
+                  {choice.thumbnail_base64 ? (
+                    <img
+                      className="max-h-28 w-full object-contain"
+                      src={`data:image/jpeg;base64,${choice.thumbnail_base64}`}
+                      alt=""
+                    />
+                  ) : (
+                    <span className="text-xs text-ink-dim px-2 text-center">No preview</span>
+                  )}
+                </div>
+                <div className="px-2 py-2">
+                  <div className="text-sm text-ink truncate">{choice.title}</div>
+                  <div className="text-xs text-ink-dim truncate">{choice.process_name}</div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from labguide.capture import capture_window_region
+from labguide.capture import capture_window_region, encode_image, is_blank_image
 from labguide.config import CaptureConfig
 from labguide.global_hotkey import GlobalHotkeyListener
 from labguide.models import (
@@ -20,6 +20,7 @@ from labguide.models import (
 from labguide.platforms.contracts import HotkeyListener, PlatformCapabilities, WindowChoice
 from labguide.ui_probe import run_ui_probe
 from labguide.win32_window import (
+    capture_printwindow,
     ensure_dpi_awareness,
     freeze_target_window,
     get_foreground_hwnd,
@@ -65,7 +66,19 @@ class WindowsAdapter:
     def capture_target(
         self, target: TargetWindow, config: CaptureConfig
     ) -> CapturedScreenshot:
-        return capture_window_region(
+        rendered = capture_printwindow(target.hwnd)
+        if rendered is not None and not is_blank_image(rendered):
+            # Window's own pixels, including when another window covers it.
+            return encode_image(
+                rendered.convert("RGB"),
+                config.jpeg_quality,
+                max_dimension=config.jpeg_max_dimension,
+                max_bytes=config.jpeg_max_bytes,
+            )
+        # PrintWindow failed or returned a blank bitmap (common for some
+        # GPU-rendered windows). The desktop crop shows whatever is painted
+        # on top; say so instead of pretending it is the window's contents.
+        screenshot = capture_window_region(
             target.x,
             target.y,
             target.width,
@@ -74,6 +87,11 @@ class WindowsAdapter:
             max_dimension=config.jpeg_max_dimension,
             max_bytes=config.jpeg_max_bytes,
         )
+        screenshot.warnings.append(
+            "this window's own contents could not be read while it was covered; "
+            "the screenshot shows the visible desktop. Bring it forward and capture again"
+        )
+        return screenshot
 
     def probe_accessibility(
         self, target: TargetWindow, config: CaptureConfig

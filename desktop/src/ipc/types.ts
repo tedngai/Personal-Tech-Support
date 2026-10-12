@@ -65,6 +65,7 @@ export interface CaptureSummary {
   target: TargetInfo | null;
   ui: UiInfo | null;
   ui_elements?: number;
+  warnings?: string[];
 }
 
 export interface CaptureStartResult {
@@ -103,6 +104,7 @@ export interface WindowChoice {
   id: number;
   title: string;
   process_name: string;
+  thumbnail_base64?: string | null;
 }
 
 export interface WindowsListResult {

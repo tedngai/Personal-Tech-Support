@@ -31,6 +31,7 @@ class WindowChoice:
     hwnd: int
     title: str
     process_name: str
+    thumbnail_base64: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
