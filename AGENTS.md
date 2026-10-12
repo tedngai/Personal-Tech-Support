@@ -150,3 +150,16 @@ before marking the feature complete.
   decisions in the architecture document.
 - Do not mark a task complete until implementation and its required verification
   both pass.
+
+## Git Workflow
+
+- Make incremental commits: commit each completed, coherent unit of work
+  (a doc, a fix with its tests, one plan update) when it is done — do not
+  batch unrelated changes into one large commit.
+- Push every commit to `origin/main` immediately after committing, so the
+  remote always reflects the current verified state.
+- Credentials: the GitHub personal access token lives in `.env` as
+  `GITHUB_PAT` (gitignored, never committed). Use it for push via a
+  one-shot credential helper or remote URL; never write the token into
+  tracked files, documentation, logs, or command output.
+- Never commit `.env`, `labguide.toml`, or any secret value.
