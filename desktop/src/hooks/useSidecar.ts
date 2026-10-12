@@ -42,9 +42,15 @@ export function useSidecar() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [pending, setPending] = useState<Attachment | null>(null);
   const [hello, setHello] = useState<HelloResult | null>(null);
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [connection, setConnectionState] = useState<ConnectionState>("connecting");
   const [inFlight, setInFlight] = useState(false);
   const nextId = useRef(1);
+  const connectionRef = useRef<ConnectionState>("connecting");
+
+  const setConnection = useCallback((state: ConnectionState) => {
+    connectionRef.current = state;
+    setConnectionState(state);
+  }, []);
 
   const append = useCallback((role: Role, content: string) => {
     setMessages((previous) => [
@@ -55,9 +61,10 @@ export function useSidecar() {
 
   useEffect(() => {
     let disposed = false;
+    let stopped = false;
     let offEvent: (() => void) | null = null;
 
-    (async () => {
+    void (async () => {
       const client = sidecar;
       try {
         await client.attach();
@@ -94,33 +101,71 @@ export function useSidecar() {
           append("system", "Capture hotkey pressed.");
         } else if (name === "degraded") {
           const event = data as DegradedEvent;
-          setConnection("degraded");
           append("system", event.message);
+        } else if (name === "shell.event") {
+          // Diagnostics from the Rust shell: spawn failures, terminations,
+          // sidecar stderr. These explain WHY the sidecar is unreachable.
+          const shell = data as { kind: string; message?: string; code?: number | null };
+          if (shell.kind === "spawn-failed") {
+            setConnection("degraded");
+            append("error", `Sidecar spawn failed: ${shell.message ?? "unknown error"}`);
+          } else if (shell.kind === "terminated") {
+            setConnection("degraded");
+            append("system", `Sidecar exited (code ${shell.code ?? "?"}); restarting…`);
+          } else if (shell.kind === "stderr" && shell.message?.trim()) {
+            append("system", `Sidecar: ${shell.message.trim()}`);
+          } else if (shell.kind === "error") {
+            append("error", `Sidecar stream error: ${shell.message ?? "unknown"}`);
+          }
         }
       });
 
-      try {
-        const helloResult = await client.request<HelloResult>("hello", {}, 10000);
-        if (disposed) return;
-        setHello(helloResult);
-        setConnection("online");
-        append(
-          "system",
-          `Pratt Lab Guide · sidecar online (${helloResult.adapter}) · model ${helloResult.config.model}`,
-        );
-      } catch (err) {
-        if (disposed) return;
-        setConnection("degraded");
-        append("error", `Sidecar unavailable: ${formatIpcError(err)}`);
-      }
+      // Watchdog: try hello immediately, then keep retrying while degraded
+      // so a slow sidecar start (PyInstaller extraction) or a respawn
+      // recovers without user action.
+      const attemptHello = async (): Promise<boolean> => {
+        try {
+          const helloResult = await client.request<HelloResult>("hello", {}, 30000);
+          if (disposed) return true;
+          const wasOffline = connectionRef.current !== "online";
+          setHello(helloResult);
+          setConnection("online");
+          if (wasOffline) {
+            append(
+              "system",
+              `Sidecar online (${helloResult.adapter}) · model ${helloResult.config.model}`,
+            );
+          }
+          return true;
+        } catch (err) {
+          if (disposed) return true;
+          if (connectionRef.current === "connecting") {
+            // First attempt failed: say so, then retry quietly.
+            append("error", `Sidecar unavailable: ${formatIpcError(err)}`);
+          }
+          setConnection("degraded");
+          return false;
+        }
+      };
+
+      const runWatchdog = async () => {
+        for (;;) {
+          if (disposed || stopped) return;
+          const online = await attemptHello();
+          if (online || disposed || stopped) return;
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      };
+      void runWatchdog();
     })();
 
     return () => {
       disposed = true;
+      stopped = true;
       offEvent?.();
       sidecar.detach();
     };
-  }, [append]);
+  }, [append, setConnection]);
 
   const captureWindow = useCallback(async () => {
     try {

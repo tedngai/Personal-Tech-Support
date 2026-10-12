@@ -18,6 +18,7 @@ captured content.
 from __future__ import annotations
 
 import asyncio
+import os
 import queue
 import sys
 import threading
@@ -232,6 +233,12 @@ class SidecarService:
             self._send(error_from_exception(request.id, exc))
         else:
             self._send(result_response(request.id, result))
+        if getattr(self, "_exit_after_response", False) and getattr(self, "_hard_exit", False):
+            # Hard exit after the response is on the wire: the reader daemon
+            # stays blocked on stdin, and interpreter finalization with a
+            # locked buffered reader crashes at shutdown.
+            sys.stdout.flush()
+            os._exit(0)
 
     def _run_bounded(
         self,
@@ -410,6 +417,7 @@ class SidecarService:
         # Stop the hotkey first so no new trigger races the shutdown path.
         self._stop_hotkey()
         self._running = False
+        self._exit_after_response = True
         return {"stopping": True}
 
     # ------------------------------------------------------------------
@@ -626,7 +634,12 @@ def main() -> int:
 
     reader = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
     writer = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    SidecarService(reader=reader, writer=writer).run()
+    service = SidecarService(reader=reader, writer=writer)
+    # The reader daemon stays blocked on stdin across shutdown; interpreter
+    # finalization with a locked buffered reader crashes, so the real stdio
+    # service exits hard after the shutdown response is flushed.
+    service._hard_exit = True
+    service.run()
     return 0
 
 

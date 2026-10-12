@@ -41,8 +41,12 @@ fn spawn_supervised(app: tauri::AppHandle) {
         .sidecar("labguide-sidecar")
         .and_then(|command| command.spawn());
     let (mut receiver, child) = match spawn_result {
-        Ok(pair) => pair,
+        Ok(pair) => {
+            eprintln!("sidecar: spawned");
+            pair
+        }
         Err(err) => {
+            eprintln!("sidecar: spawn failed: {err}");
             let _ = app.emit(
                 "sidecar-event",
                 json!({"kind": "spawn-failed", "message": err.to_string()}),
@@ -79,6 +83,10 @@ fn spawn_supervised(app: tauri::AppHandle) {
                     if state.shutting_down.load(Ordering::Relaxed) {
                         return;
                     }
+                    eprintln!(
+                        "sidecar: terminated (code {:?}); respawning in {:?}",
+                        status.code, RESPAWN_DELAY
+                    );
                     let _ = app.emit(
                         "sidecar-event",
                         json!({"kind": "terminated", "code": status.code}),

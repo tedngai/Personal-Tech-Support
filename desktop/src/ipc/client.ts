@@ -25,6 +25,7 @@ export class SidecarClient {
   private readonly pending = new Map<number, PendingRequest>();
   private readonly eventListeners = new Set<(name: string, data: unknown) => void>();
   private unlistenLine: UnlistenFn | null = null;
+  private unlistenShell: UnlistenFn | null = null;
   private attached = false;
 
   constructor(
@@ -32,11 +33,17 @@ export class SidecarClient {
       invoke("sidecar_send", { line }),
   ) {}
 
-  /** Begin consuming `sidecar-line` events. Idempotent. */
+  /** Begin consuming `sidecar-line` and `sidecar-event` events. Idempotent. */
   async attach(): Promise<void> {
     if (this.attached) return;
     this.unlistenLine = await listen<string>("sidecar-line", (event) => {
       this.handleLine(event.payload);
+    });
+    // Shell diagnostics (spawn failures, terminations, sidecar stderr).
+    // Dispatched under a reserved name so consumers can distinguish them
+    // from sidecar protocol events.
+    this.unlistenShell = await listen<unknown>("sidecar-event", (event) => {
+      this.dispatch("shell.event", event.payload);
     });
     this.attached = true;
   }
@@ -44,6 +51,8 @@ export class SidecarClient {
   detach(): void {
     this.unlistenLine?.();
     this.unlistenLine = null;
+    this.unlistenShell?.();
+    this.unlistenShell = null;
     this.attached = false;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
