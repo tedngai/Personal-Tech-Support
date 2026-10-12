@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "platform": "test",
+    "capabilities": {
+      "screenshot": true,
+      "window_capture": true,
+      "accessibility": true,
+      "global_hotkey": true
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "service": "labguide-sidecar",
+    "protocol": "2.0",
+    "adapter": "test",
+    "capabilities": {
+      "screenshot": true,
+      "window_capture": true,
+      "accessibility": true,
+      "global_hotkey": true
+    },
+    "config": {
+      "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+      "backend_url": "http://127.0.0.1:8000/v1",
+      "ui_enabled": false,
+      "global_hotkey": "ctrl+shift+space",
+      "jpeg_max_dimension": 2560,
+      "jpeg_max_bytes": 2000000,
+      "ui_max_nodes": 500,
+      "max_history_turns": 6
+    }
+  }
+}

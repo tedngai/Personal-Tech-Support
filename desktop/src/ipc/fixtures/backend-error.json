@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "error": {
+    "code": -32004,
+    "message": "backend returned HTTP 502",
+    "data": {
+      "stage": "backend"
+    }
+  }
+}

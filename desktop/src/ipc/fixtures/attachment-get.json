@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": 6,
+  "result": {
+    "pending": true,
+    "attachment": {
+      "capture_id": "9c185b08116943d1a3182e50a91c68d9",
+      "image_base64": "aGVsbG8=",
+      "byte_count": 6,
+      "width": 800,
+      "height": 600,
+      "target": {
+        "process_name": "Notepad",
+        "window_title": "Untitled",
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 800,
+          "height": 600
+        }
+      },
+      "ui": {
+        "status": "complete",
+        "element_count": 0,
+        "truncated": false,
+        "warnings": []
+      }
+    }
+  }
+}
