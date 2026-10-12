@@ -32,3 +32,9 @@ LabGuide-PRD.md
 # Generated local render artifacts
 tui-review*.svg
 pratt-lab-guide*.svg
+
+# Tauri desktop app
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
