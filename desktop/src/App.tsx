@@ -92,7 +92,7 @@ export default function App() {
             Clear conversation
           </button>
         </div>
-        <Composer disabled={degraded || inFlight} onSubmit={(prompt) => void submitPrompt(prompt)} />
+        <Composer disabled={degraded || inFlight} onSubmit={submitPrompt} />
       </div>
     </div>
   );

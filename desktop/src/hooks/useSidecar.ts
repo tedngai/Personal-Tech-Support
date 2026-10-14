@@ -120,9 +120,9 @@ export function useSidecar() {
         }
       });
 
-      // Watchdog: try hello immediately, then keep retrying while degraded
-      // so a slow sidecar start (PyInstaller extraction) or a respawn
-      // recovers without user action.
+      // Watchdog: retry hello whenever the connection is not online. Keeps
+      // running for the app's lifetime so a sidecar respawn recovers without
+      // user action (the banner promises exactly that).
       const attemptHello = async (): Promise<boolean> => {
         try {
           const helloResult = await client.request<HelloResult>("hello", {}, 30000);
@@ -148,15 +148,16 @@ export function useSidecar() {
         }
       };
 
-      const runWatchdog = async () => {
+      const watchdogLoop = async () => {
         for (;;) {
           if (disposed || stopped) return;
-          const online = await attemptHello();
-          if (online || disposed || stopped) return;
+          if (connectionRef.current !== "online") {
+            await attemptHello();
+          }
           await new Promise((resolve) => setTimeout(resolve, 3000));
         }
       };
-      void runWatchdog();
+      void watchdogLoop();
     })();
 
     return () => {
@@ -182,9 +183,9 @@ export function useSidecar() {
   }, [append]);
 
   const submitPrompt = useCallback(
-    async (prompt: string) => {
+    async (prompt: string): Promise<boolean> => {
       const clean = prompt.trim();
-      if (!clean) return;
+      if (!clean) return true;
       append("user", clean);
       setInFlight(true);
       try {
@@ -194,8 +195,10 @@ export function useSidecar() {
         // Cleared only after a successful send; the sidecar cleared its
         // copy of the same capture.
         setPending(null);
+        return true;
       } catch (err) {
         append("error", formatIpcError(err));
+        return false;
       } finally {
         setInFlight(false);
       }
@@ -255,6 +258,7 @@ function describeCapture(capture: {
   height: number;
   target: { process_name: string; window_title: string } | null;
   ui: { status: string; element_count: number; truncated: boolean } | null;
+  warnings?: string[];
 }): string {
   const parts = [
     `Captured ${
@@ -270,5 +274,10 @@ function describeCapture(capture: {
   } else {
     parts.push("screenshot only");
   }
-  return `${parts[0]} (${parts.slice(1).join(", ")})`;
+  const description = `${parts[0]} (${parts.slice(1).join(", ")})`;
+  // Stage notes (e.g. desktop-crop fallback) are part of what the user must
+  // know about this attachment; surfaced for hotkey captures too.
+  return capture.warnings?.length
+    ? `${description} — ${capture.warnings.join(" ")}`
+    : description;
 }

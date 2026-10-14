@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent } from "react";
 
 interface ComposerProps {
   disabled: boolean;
-  onSubmit: (prompt: string) => void;
+  onSubmit: (prompt: string) => Promise<boolean>;
 }
 
 export function Composer({ disabled, onSubmit }: ComposerProps) {
@@ -11,8 +11,14 @@ export function Composer({ disabled, onSubmit }: ComposerProps) {
   const submit = () => {
     const clean = text.trim();
     if (!clean || disabled) return;
-    onSubmit(clean);
     setText("");
+    void onSubmit(clean).then((sent) => {
+      if (!sent) {
+        // Failed sends restore the prompt, unless the user has already
+        // typed something new (same rule as the TUI).
+        setText((current) => (current.trim() ? current : clean));
+      }
+    });
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
