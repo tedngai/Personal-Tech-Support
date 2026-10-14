@@ -151,6 +151,15 @@ describe("sidecar client against Python golden fixtures", () => {
     }
   });
 
+  it("detach removes event listeners so a remount cannot duplicate them", () => {
+    const { client } = testClient();
+    const listener = vi.fn();
+    client.onEvent(listener);
+    client.detach();
+    client.handleLine(JSON.stringify({ event: "capture.completed", data: {} }));
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("dispatches events to subscribers", () => {
     const { client } = testClient();
     const listener = vi.fn();

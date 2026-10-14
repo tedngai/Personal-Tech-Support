@@ -54,6 +54,9 @@ export class SidecarClient {
     this.unlistenShell?.();
     this.unlistenShell = null;
     this.attached = false;
+    // Stale listeners must not survive a detach: a second mount would then
+    // receive every event twice (observed as duplicated transcript lines).
+    this.eventListeners.clear();
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject({ code: -32603, message: "sidecar client detached" });

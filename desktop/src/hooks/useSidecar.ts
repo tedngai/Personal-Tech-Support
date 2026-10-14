@@ -62,19 +62,12 @@ export function useSidecar() {
   useEffect(() => {
     let disposed = false;
     let stopped = false;
-    let offEvent: (() => void) | null = null;
-
-    void (async () => {
-      const client = sidecar;
-      try {
-        await client.attach();
-      } catch {
-        // In the webview, attach only fails if the event API is absent.
-        if (!disposed) setConnection("degraded");
-        return;
-      }
-
-      offEvent = client.onEvent((name, data) => {
+    const client = sidecar;
+    // Listener registration is synchronous: under React StrictMode's
+    // double-mount, registration inside an async effect body runs after the
+    // first cleanup and leaks a duplicate listener (every event appended
+    // twice — observed as doubled system/capture lines).
+    const offEvent = client.onEvent((name, data) => {
         if (disposed) return;
         if (name === "capture.completed") {
           const event = data as CaptureCompletedEvent;
@@ -118,7 +111,16 @@ export function useSidecar() {
             append("error", `Sidecar stream error: ${shell.message ?? "unknown"}`);
           }
         }
-      });
+    });
+
+    void (async () => {
+      try {
+        await client.attach();
+      } catch {
+        // In the webview, attach only fails if the event API is absent.
+        if (!disposed) setConnection("degraded");
+        return;
+      }
 
       // Watchdog: retry hello whenever the connection is not online. Keeps
       // running for the app's lifetime so a sidecar respawn recovers without
@@ -163,7 +165,7 @@ export function useSidecar() {
     return () => {
       disposed = true;
       stopped = true;
-      offEvent?.();
+      offEvent();
       sidecar.detach();
     };
   }, [append, setConnection]);
