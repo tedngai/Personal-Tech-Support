@@ -22,17 +22,21 @@ milestones are actually completed and verified.
 
 ## Current Priority
 
-The macOS adapter (`src/labguide/platforms/macos/`) is implemented but has
-never run on a Mac. The next action is interactive validation on a macOS Tahoe
-machine using the 14-row matrix in `docs/Cross-Platform-Execution-Plan.md`,
-then fixing what it breaks. Likely first-failure candidates: PyObjC
-ScreenCaptureKit completion-handler bridging, AX attribute names/types, pynput
-chord mapping, and Retina point-vs-pixel alignment between AX bounds and
-screenshot pixels. See `PROGRESS.xml` for the full action list.
+The active initiative is the desktop app (Tauri 2 shell + Python sidecar).
+Phases 1-2 are complete and verified live on Windows: the app builds, runs,
+captures windows through a thumbnail picker, submits to the real backend, and
+is packaged as an unsigned MSI. Start with `docs/Desktop-App-Migration-Plan.md`
+and `PROGRESS.xml`. The next functional step is the Windows acceptance matrix;
+code signing, the updater, and fleet/MDM provisioning follow.
+
+The macOS adapter (`src/labguide/platforms/macos/`) is partially validated on
+Tahoe but not finished: desktop-UI rows, Retina geometry, and secondary
+displays still need a Mac. See `PROGRESS.xml` for the full action list.
 
 ## Product Boundaries
 
-- The application is a lightweight Textual TUI and is Windows-first.
+- The application is a Tauri 2 + React desktop app with a Python sidecar;
+  the Textual TUI is retained as a fallback. Windows-first.
 - The backend contract remains OpenAI-compatible `/v1/chat/completions` and
   `/v1/models` unless a separate backend change is explicitly approved.
 - Screenshot, UI Automation, and backend failures must become readable user

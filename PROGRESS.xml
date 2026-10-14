@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<progress project="Pratt Lab Guide" updated="2026-10-05">
+<progress project="Pratt Lab Guide" updated="2026-10-12">
   <summary>
-    Cross-platform initiative (Windows + macOS, Linux deferred). Phases 1-5
-    implemented and unit-tested on Windows. The macOS adapter is implemented
-    but has never run on a Mac; interactive validation on macOS Tahoe is the
-    single next action before the feature can be called complete.
+    Desktop-app initiative (Tauri 2 + Python sidecar) is the active thread:
+    phases 1-2 complete and verified live on Windows (chat, thumbnail window
+    picker, covered-window capture, hotkey, tray, single-instance, machine-wide
+    config, unsigned MSI). Next: Windows acceptance matrix, code signing, then
+    updater and fleet/MDM work. The macOS adapter is partially validated on
+    Tahoe; desktop-UI rows, Retina, and secondary display still need a Mac.
   </summary>
 
   <current-state>
-    <tests total="100" passing="100" skipped="3"/>
-    <commit ref="81afe98" branch="main" pushed="true"/>
+    <tests total="180" passing="180" skipped="3"/>
+    <commit ref="92b4f17" branch="main" pushed="true"/>
+    <tests-other name="vitest" total="17" passing="17"/>
     <platform name="windows" status="implemented">
       <note>Adapter wraps existing Win32 modules; behavior unchanged.</note>
     </platform>
@@ -46,7 +49,7 @@
     <platform name="linux" status="deferred">
       <note>UnsupportedAdapter: text-only + primary screenshot fallback.</note>
     </platform>
-    <initiative name="desktop-app" status="phase-2-mostly-complete">
+    <initiative name="desktop-app" status="phase-2-complete">
       <note>
         Tauri 2 + React shell with PyInstaller Python sidecar. Working in
         live tauri-dev runs (2026-10-12): text-only chat, thumbnail window
@@ -78,48 +81,66 @@
   </current-state>
 
   <next-actions>
-    <action id="1" priority="highest" platform="macos">
-      <title>Interactive macOS validation on a Tahoe machine</title>
+    <action id="1" priority="highest" platform="windows">
+      <title>Windows acceptance pass for the desktop app</title>
       <details>
-        Run the 14-row acceptance matrix in
-        docs/Cross-Platform-Execution-Plan.md ("macOS Validation Matrix").
-        Setup: python3 -m venv .venv; pip install -e .; grant Screen
-        Recording and Accessibility to the terminal; set ui_enabled = true.
-        Smoke probes first:
-          python -m labguide.platforms.macos.ax_probe --pid &lt;pid&gt;
-          python -m labguide.platforms.macos.ax_probe --help
-        Then the full TUI flow: hotkey capture in TextEdit, return to
-        LabGuide, submit with backend.
+        Run the existing matrix in docs/UI-Context-Capture-Execution-Plan.md
+        against the desktop app (Notepad, standard error dialog, browser,
+        elevated app, UIA timeout, secondary monitor), plus the sidecar
+        robustness rows in docs/Desktop-App-Migration-Plan.md (crash
+        mid-capture, slow sidecar, quit during probe, update with pending
+        capture). Fix what it breaks. This closes the last functional
+        acceptance item for Windows.
       </details>
       <on-completion>
-        Check off matrix rows in docs/Cross-Platform-Execution-Plan.md, flip
-        Phase 4 "Interactive validation" to done, update this file.
+        Record outcomes in docs/UI-Context-Capture-Execution-Plan.md, mark
+        Phase 5 acceptance done in the migration plan, update this file.
       </on-completion>
     </action>
-    <action id="2" priority="high" platform="macos">
-      <title>Fix whatever the validation matrix breaks</title>
+    <action id="2" priority="high" platform="windows">
+      <title>Code signing: Authenticode cert, then signed MSI</title>
       <details>
-        Likely first-failure candidates (untested code paths):
-        PyObjC ScreenCaptureKit completion-handler bridging, AX attribute
-        names/types, pynput chord mapping, Retina point-vs-pixel geometry
-        alignment between AX bounds and screenshot pixels.
+        Procurement, not code: OV or EV code-signing certificate (EV avoids
+        SmartScreen reputation lag). Then sign the shell and the sidecar with
+        the same identity and rebuild the MSI. Required before any campus
+        install. macOS notarization waits for a Mac.
       </details>
     </action>
-    <action id="3" priority="medium" platform="windows">
-      <title>Windows interactive regression pass</title>
+    <action id="3" priority="high" platform="macos">
+      <title>macOS desktop validation on Tahoe, then bundle and notarize</title>
       <details>
-        Confirm the adapter refactor changed nothing: existing matrix in
-        docs/UI-Context-Capture-Execution-Plan.md (Notepad, error dialog,
-        browser, elevated app, UIA timeout, secondary monitor).
+        Needs a Mac. Re-run the matrix in
+        docs/Cross-Platform-Execution-Plan.md against the desktop app, close
+        the Retina and secondary-display rows, and confirm the window picker
+        (CGWindowList enumeration) on hardware. Then produce a signed,
+        notarized app bundle with the sidecar inside it.
       </details>
     </action>
-    <action id="4" priority="low" platform="windows">
-      <title>Windows Graphics Capture for true window contents</title>
+    <action id="4" priority="medium" platform="fleet">
+      <title>Fleet provisioning with campus IT (MDM)</title>
       <details>
-        Windows window capture still crops the visible desktop, so
-        overlapping windows can appear in the screenshot. macOS already has
-        true window capture via ScreenCaptureKit. Deferred future work;
-        listed in the execution plan's Deferred section.
+        Confirm the MDM system and push labguide.toml to
+        %PROGRAMDATA%\LabGuide (Windows) / /Library/Application Support/
+        LabGuide (macOS). Decide the API-key policy for a machine-readable
+        file. Add macOS TCC pre-approval profiles (Screen Recording,
+        Accessibility) so users never see permission prompts.
+      </details>
+    </action>
+    <action id="5" priority="low" platform="windows">
+      <title>Windows Graphics Capture (quality, not speed)</title>
+      <details>
+        PrintWindow is fast (64 ms) but returns blank for some GPU-rendered
+        windows; the desktop-crop fallback then shows whatever covers the
+        target. WGC would fix that class of window. Deferred; not a
+        performance item.
+      </details>
+    </action>
+    <action id="6" priority="low" platform="windows">
+      <title>Tauri updater wiring</title>
+      <details>
+        Needs updater signing keys. Start with a static update manifest; no
+        update server to run. Static hosting plus a signed MSI is the
+        prerequisite.
       </details>
     </action>
   </next-actions>
