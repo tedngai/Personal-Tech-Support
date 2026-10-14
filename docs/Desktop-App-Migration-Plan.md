@@ -250,7 +250,7 @@ include captured content.
       probe (graceful, no wedge), update installed while capture pending.
 - [ ] Pure unit suite still passes unchanged (models, formatting,
       truncation, redaction, adapter selection).
-- [ ] README, example config, and troubleshooting updated for the desktop
+- [x] README, example config, and troubleshooting updated for the desktop
       app; `AGENTS.md` code map updated for `desktop/` and `service/`.
 
 ## Risks and Mitigations
