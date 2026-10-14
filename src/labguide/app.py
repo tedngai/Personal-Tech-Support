@@ -300,7 +300,7 @@ class LabGuideApp(App[None]):
                     success=False,
                     latency_ms=None,
                     backend_url=self.config.backend.base_url,
-                    error=str(exc),
+                    error=_error_category(exc),
                     **_capture_log_fields(screenshot, used_pending_capture),
                 )
             )
@@ -312,7 +312,7 @@ class LabGuideApp(App[None]):
                     success=False,
                     latency_ms=None,
                     backend_url=self.config.backend.base_url,
-                    error=str(exc),
+                    error=_error_category(exc),
                     **_capture_log_fields(screenshot, used_pending_capture),
                 )
             )
@@ -489,6 +489,18 @@ def _capture_log_fields(
         fields["ui_node_count"] = screenshot.ui.node_count
         fields["ui_truncated"] = screenshot.ui.truncated
     return fields
+
+
+def _error_category(exc: Exception) -> str:
+    """Operational category for the session log, never verbatim text.
+
+    Backend error bodies can echo prompt fragments; the log records only
+    stage and category (see SessionLogEntry).
+    """
+    from labguide.ipc import map_exception
+
+    stage, _code, category = map_exception(exc)
+    return f"{stage}:{category}" if category else stage
 
 
 def run() -> None:

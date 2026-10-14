@@ -90,6 +90,9 @@ class SidecarService:
         self._write_lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._running = False
+        self._exit_after_response = False
+        # True only in the real stdio entry point; tests never hard-exit.
+        self._hard_exit = False
         self._hotkey_listener: HotkeyListener | None = None
 
         self._pending: CapturedScreenshot | None = None
@@ -234,7 +237,7 @@ class SidecarService:
             self._send(error_from_exception(request.id, exc))
         else:
             self._send(result_response(request.id, result))
-        if getattr(self, "_exit_after_response", False) and getattr(self, "_hard_exit", False):
+        if self._exit_after_response and self._hard_exit:
             # Hard exit after the response is on the wire: the reader daemon
             # stays blocked on stdin, and interpreter finalization with a
             # locked buffered reader crashes at shutdown.
@@ -339,12 +342,15 @@ class SidecarService:
                 "mode must be one of: foreground, below, display, window",
                 stage="capture.start",
             )
-        if mode == "window" and not isinstance(params.get("hwnd"), int):
-            raise IpcError(
-                INVALID_PARAMS,
-                "mode 'window' requires an integer hwnd from windows.list",
-                stage="capture.start",
-            )
+        if mode == "window":
+            hwnd_value = params.get("hwnd")
+            # bool is a subclass of int; a true/false hwnd is never valid.
+            if not isinstance(hwnd_value, int) or isinstance(hwnd_value, bool):
+                raise IpcError(
+                    INVALID_PARAMS,
+                    "mode 'window' requires an integer hwnd from windows.list",
+                    stage="capture.start",
+                )
         screenshot = self._capture_for_mode(mode, params.get("hwnd"))
         with self._state_lock:
             # Replace the pending attachment only after capture succeeds.
@@ -386,14 +392,29 @@ class SidecarService:
                 screenshot = self._pending if attach_pending else None
             used_pending = screenshot is not None
 
-        result = asyncio.run(
-            self._backend.analyze(
-                message=prompt,
-                screenshot=screenshot,
-                history=self._recent_history(),
-                ui_max_text_chars=self._config.capture.ui_max_text_chars,
+        try:
+            result = asyncio.run(
+                self._backend.analyze(
+                    message=prompt,
+                    screenshot=screenshot,
+                    history=self._recent_history(),
+                    ui_max_text_chars=self._config.capture.ui_max_text_chars,
+                )
             )
-        )
+        except Exception as exc:  # noqa: BLE001 - re-raised after the operational log
+            # Failed sends are logged as stage:category, never verbatim
+            # error text (backend bodies can echo prompt fragments).
+            stage, _code, category = map_exception(exc)
+            self._logger.write(
+                SessionLogEntry(
+                    success=False,
+                    latency_ms=None,
+                    backend_url=self._config.backend.base_url,
+                    error=f"{stage}:{category}" if category else stage,
+                    **_capture_log_fields(screenshot, used_pending),
+                )
+            )
+            raise
 
         with self._state_lock:
             self._history.append(Message(role="user", content=prompt))

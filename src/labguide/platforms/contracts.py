@@ -16,22 +16,9 @@ from labguide.models import (
     CapturedScreenshot,
     TargetWindow,
     UISnapshot,
+    WindowChoice,
     WindowIdentityError,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class WindowChoice:
-    """One user-selectable capture target for the window picker.
-
-    ``hwnd`` is the platform-native window reference, opaque outside the
-    adapter; the UI treats it as an id.
-    """
-
-    hwnd: int
-    title: str
-    process_name: str
-    thumbnail_base64: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

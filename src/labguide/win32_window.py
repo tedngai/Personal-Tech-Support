@@ -14,8 +14,7 @@ import sys
 from ctypes import wintypes
 from dataclasses import dataclass
 
-from labguide.models import TargetWindow, WindowIdentityError
-from labguide.platforms.contracts import WindowChoice
+from labguide.models import TargetWindow, WindowChoice, WindowIdentityError
 
 __all__ = [
     "WindowIdentityError",

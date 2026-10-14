@@ -134,7 +134,7 @@ class FakeBackend:
         raise NotImplementedError
 
 
-def make_service(adapter: FakeAdapter, backend: FakeBackend | None = None) -> tuple[SidecarService, io.StringIO]:
+def make_service(adapter: FakeAdapter, backend: FakeBackend | None = None, logger=None) -> tuple[SidecarService, io.StringIO]:
     reader = io.StringIO()
     writer = io.StringIO()
     config = AppConfig(
@@ -148,7 +148,7 @@ def make_service(adapter: FakeAdapter, backend: FakeBackend | None = None) -> tu
         config=config,
         adapter=adapter,
         backend=backend or FakeBackend(),
-        logger=None,
+        logger=logger,
     )
     return service, writer
 
@@ -436,6 +436,48 @@ class WindowPickerTests(unittest.TestCase):
         service, _ = make_service(adapter)
         response = call(service, 1, "capture.start", {"mode": "window", "hwnd": 99})
         self.assertEqual(response["error"]["data"]["category"], "own_terminal")
+
+    def test_capture_window_mode_rejects_bool_hwnd(self) -> None:
+        # bool is a subclass of int; True must not pass as hwnd 1.
+        service, _ = make_service(FakeAdapter())
+        response = call(service, 1, "capture.start", {"mode": "window", "hwnd": True})
+        self.assertEqual(response["error"]["code"], -32602)
+
+
+class RecordingLogger:
+    def __init__(self) -> None:
+        self.entries: list = []
+
+    def write(self, entry) -> None:
+        self.entries.append(entry)
+
+
+class SessionLogComplianceTests(unittest.TestCase):
+    def test_failed_submit_logs_stage_category_not_verbatim_text(self) -> None:
+        backend = FakeBackend()
+        backend.error = BackendError("http 502: model 'x' rejected prompt 'hi'")
+        logger = RecordingLogger()
+        service, _ = make_service(FakeAdapter(), backend, logger=logger)
+        call(service, 1, "capture.start")
+        response = call(service, 2, "submit", {"prompt": "hi"})
+        self.assertEqual(response["error"]["code"], -32004)
+        self.assertEqual(len(logger.entries), 1)
+        entry = logger.entries[0]
+        self.assertFalse(entry.success)
+        self.assertEqual(entry.error, "backend")
+        # Verbatim backend text must never reach the log.
+        self.assertNotIn("prompt 'hi'", str(entry))
+
+    def test_successful_submit_logs_operational_metadata_only(self) -> None:
+        logger = RecordingLogger()
+        service, _ = make_service(FakeAdapter(), FakeBackend(), logger=logger)
+        call(service, 1, "capture.start")
+        call(service, 2, "submit", {"prompt": "hi"})
+        self.assertEqual(len(logger.entries), 1)
+        entry = logger.entries[0]
+        self.assertTrue(entry.success)
+        self.assertEqual(entry.capture_kind, "pending")
+        self.assertNotIn("hi", str(entry))
 
 
 if __name__ == "__main__":
