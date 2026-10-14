@@ -98,6 +98,10 @@ screenshot pixels. See `PROGRESS.xml` for the full action list.
   - `windows/`: wraps the Win32 modules behind the contract
   - `macos/`: CGWindowList identity, ScreenCaptureKit capture, isolated
     AXUIElement probe, pynput hotkey, TCC permission checks (macOS only)
+- `desktop/`: Tauri 2 + React desktop shell (sidecar supervision, tray,
+  single-instance, window picker UI; no product logic in Rust)
+- `scripts/build_sidecar.py`: PyInstaller sidecar build (Tauri externalBin
+  naming; deploys labguide.toml next to the sidecar for dev runs)
 - `tests/`: pure unit tests; no display, UIA, or backend required
 
 The app consumes `get_adapter()` and `PlatformCapabilities`; keep OS API calls

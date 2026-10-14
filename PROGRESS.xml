@@ -59,11 +59,13 @@
         file provisions every user of a machine. First MSI built:
         LabGuide_0.1.0_x64_en-US.msi
         (unsigned). Identity frozen: com.labguide.desktop / LabGuide /
-        labguide-sidecar. Tests: 171 Python + 12 vitest. Remaining:
+        labguide-sidecar. Tests: 174 Python + 12 vitest. Remaining:
         real-keypress hotkey confirmation (one
         interactive step), Authenticode cert + signed MSI, updater wiring,
         macOS bundle/notarization (needs a Mac), MDM confirmation with
         campus IT, README/example-config sync for the desktop app.
+        CSP enabled in tauri.conf.json (2026-10-12) pending one live
+        verification run; rollback is one line if the window renders blank.
       </note>
     </initiative>
   </current-state>
