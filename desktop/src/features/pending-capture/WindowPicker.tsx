@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { sidecar } from "../../ipc/client";
 import type { CaptureStartResult, IpcErrorInfo, WindowChoice } from "../../ipc/types";
 import { formatIpcError } from "../../hooks/useSidecar";
@@ -9,11 +10,15 @@ interface WindowPickerProps {
   onNotice: (role: "capture", message: string) => void;
 }
 
+const HIDE_SETTLE_MS = 250;
+
 /**
  * Thumbnail grid of capturable windows. Errors stay in this panel so the
  * user is never stranded in the picker while the message lands behind it.
- * Capture does not hide or restack windows; PrintWindow reads the target's
- * own pixels when the OS allows it.
+ * Capture does not hide or restack windows in the common case; PrintWindow
+ * reads the target's own pixels when the OS allows it. When that fails and
+ * the capture falls back to a desktop crop, LabGuide hides itself for the
+ * retry so its own window is not painted over the target in the shot.
  */
 export function WindowPicker({ onCaptured, onClose, onNotice }: WindowPickerProps) {
   const [windows, setWindows] = useState<WindowChoice[] | null>(null);
@@ -39,10 +44,22 @@ export function WindowPicker({ onCaptured, onClose, onNotice }: WindowPickerProp
     setBusyId(choice.id);
     setError(null);
     try {
-      const result = await sidecar.request<CaptureStartResult>("capture.start", {
-        mode: "window",
-        hwnd: choice.id,
-      });
+      const params = { mode: "window", hwnd: choice.id };
+      let result = await sidecar.request<CaptureStartResult>("capture.start", params);
+      if (result.capture.warnings?.length) {
+        // Desktop-crop fallback: LabGuide's own window (and this panel) may
+        // be painted over the target in the region crop. Hide, recapture,
+        // and always restore the app.
+        await invoke("set_window_visible", { visible: false });
+        try {
+          await new Promise((resolve) => setTimeout(resolve, HIDE_SETTLE_MS));
+          result = await sidecar.request<CaptureStartResult>("capture.start", params);
+        } finally {
+          await invoke("set_window_visible", { visible: true }).catch(() => {
+            // Showing the window must never strand the user without the app.
+          });
+        }
+      }
       const warning = result.capture.warnings?.[0];
       onNotice(
         "capture",
