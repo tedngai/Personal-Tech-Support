@@ -121,6 +121,18 @@ class FakeBackend:
     def __init__(self) -> None:
         self.calls: list[dict] = []
         self.error: BackendError | None = None
+        self.reachable = True
+        self.health_detail: str | None = None
+
+    async def health_check(self):
+        from labguide.models import HealthResult
+
+        return HealthResult(
+            reachable=self.reachable,
+            service="openai-compatible",
+            model="fake-model",
+            detail=self.health_detail,
+        )
 
     async def analyze(self, message, screenshot, history, ui_max_text_chars=10000):
         self.calls.append(
@@ -129,9 +141,6 @@ class FakeBackend:
         if self.error is not None:
             raise self.error
         return AnalyzeResult(answer="try restarting", model="fake-model", latency_ms=5)
-
-    def health_check(self):  # pragma: no cover - not used by the service yet
-        raise NotImplementedError
 
 
 def make_service(adapter: FakeAdapter, backend: FakeBackend | None = None, logger=None) -> tuple[SidecarService, io.StringIO]:
@@ -442,6 +451,23 @@ class WindowPickerTests(unittest.TestCase):
         service, _ = make_service(FakeAdapter())
         response = call(service, 1, "capture.start", {"mode": "window", "hwnd": True})
         self.assertEqual(response["error"]["code"], -32602)
+
+
+class HealthCheckTests(unittest.TestCase):
+    def test_health_check_reports_reachable_backend(self) -> None:
+        service, _ = make_service(FakeAdapter())
+        response = call(service, 1, "health.check")
+        self.assertTrue(response["result"]["reachable"])
+        self.assertEqual(response["result"]["model"], "fake-model")
+
+    def test_health_check_reports_unreachable_backend(self) -> None:
+        backend = FakeBackend()
+        backend.reachable = False
+        backend.health_detail = "connection refused"
+        service, _ = make_service(FakeAdapter(), backend)
+        response = call(service, 1, "health.check")
+        self.assertFalse(response["result"]["reachable"])
+        self.assertEqual(response["result"]["detail"], "connection refused")
 
 
 class RecordingLogger:

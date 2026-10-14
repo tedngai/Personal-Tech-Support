@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "reachable": true,
+    "service": "openai-compatible",
+    "model": "fake-model",
+    "detail": null
+  }
+}

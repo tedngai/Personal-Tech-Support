@@ -44,6 +44,14 @@ export interface HelloResult {
   config: ConfigSummary;
 }
 
+/** Shape of health.check: backend reachability against /v1/models. */
+export interface HealthCheckResult {
+  reachable: boolean;
+  service: string | null;
+  model: string | null;
+  detail: string | null;
+}
+
 export interface TargetInfo {
   process_name: string;
   window_title: string;

@@ -11,6 +11,7 @@ export default function App() {
     pending,
     hello,
     connection,
+    backendHealth,
     inFlight,
     captureWindow,
     refreshPending,
@@ -49,6 +50,11 @@ export default function App() {
         )}
         {hello && hello.capabilities.global_hotkey && (
           <span className="text-role-capture">hotkey: {hello.config.global_hotkey}</span>
+        )}
+        {backendHealth !== null && (
+          <span className={backendHealth ? "text-role-assistant" : "text-role-error"}>
+            backend: {backendHealth ? "online" : "offline"}
+          </span>
         )}
         <span className={`ml-auto ${degraded ? "text-role-error" : "text-role-assistant"}`}>
           {connection === "connecting" ? "connecting" : degraded ? "offline" : "online"}

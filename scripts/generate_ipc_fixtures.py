@@ -44,9 +44,10 @@ def generate() -> None:
         raise RuntimeError(f"no response for {method}")
 
     call("hello", 1, "hello")
-    call("permissions-status", 2, "permissions.status")
-    call("attachment-get-empty", 3, "attachment.get")
-    call("unknown-method", 4, "nope")
+    call("health-check", 2, "health.check")
+    call("permissions-status", 3, "permissions.status")
+    call("attachment-get-empty", 4, "attachment.get")
+    call("unknown-method", 5, "nope")
 
     # capture + attachment: fresh service, successful capture.
     service, _ = make_service(FakeAdapter())

@@ -4,7 +4,7 @@
   "result": {
     "pending": true,
     "capture": {
-      "capture_id": "9c185b08116943d1a3182e50a91c68d9",
+      "capture_id": "9b5b40a9468c4811aea65c9e76159dda",
       "byte_count": 6,
       "width": 800,
       "height": 600,
@@ -24,6 +24,7 @@
         "truncated": false,
         "warnings": []
       },
+      "warnings": [],
       "ui_elements": 0
     }
   }

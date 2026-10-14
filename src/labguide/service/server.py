@@ -100,6 +100,7 @@ class SidecarService:
 
         self._methods: dict[str, tuple[Callable[[dict[str, Any]], dict[str, Any]], float]] = {
             "hello": (self._hello, _DEFAULT_DEADLINE_SECONDS),
+            "health.check": (self._health_check, self._config.backend.timeout_seconds + 5.0),
             "permissions.status": (self._permissions_status, _DEFAULT_DEADLINE_SECONDS),
             "windows.list": (self._windows_list, _DEFAULT_DEADLINE_SECONDS),
             "capture.start": (self._capture_start, _CAPTURE_DEADLINE_SECONDS),
@@ -302,6 +303,16 @@ class SidecarService:
                 "global_hotkey": capabilities.global_hotkey,
             },
             "config": _config_summary(self._config),
+        }
+
+    def _health_check(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Backend reachability against /v1/models, as the TUI status bar."""
+        result = asyncio.run(self._backend.health_check())
+        return {
+            "reachable": result.reachable,
+            "service": result.service,
+            "model": result.model,
+            "detail": result.detail,
         }
 
     def _permissions_status(self, params: dict[str, Any]) -> dict[str, Any]:

@@ -8,6 +8,7 @@ import type {
   CaptureStartResult,
   DegradedEvent,
   DiscardResult,
+  HealthCheckResult,
   HelloResult,
   SubmitResult,
 } from "../ipc/types";
@@ -43,6 +44,7 @@ export function useSidecar() {
   const [pending, setPending] = useState<Attachment | null>(null);
   const [hello, setHello] = useState<HelloResult | null>(null);
   const [connection, setConnectionState] = useState<ConnectionState>("connecting");
+  const [backendHealth, setBackendHealth] = useState<boolean | null>(null);
   const [inFlight, setInFlight] = useState(false);
   const nextId = useRef(1);
   const connectionRef = useRef<ConnectionState>("connecting");
@@ -122,6 +124,20 @@ export function useSidecar() {
         return;
       }
 
+      // Backend reachability once at startup, like the TUI status bar.
+      try {
+        const health = await client.request<HealthCheckResult>("health.check", {}, 35000);
+        if (disposed) return;
+        setBackendHealth(health.reachable);
+        if (!health.reachable) {
+          append("error", health.detail || "Backend unreachable.");
+        }
+      } catch (err) {
+        if (disposed) return;
+        setBackendHealth(false);
+        append("error", `Backend check failed: ${formatIpcError(err)}`);
+      }
+
       // Watchdog: retry hello whenever the connection is not online. Keeps
       // running for the app's lifetime so a sidecar respawn recovers without
       // user action (the banner promises exactly that).
@@ -193,6 +209,7 @@ export function useSidecar() {
       try {
         const result = await sidecar.request<SubmitResult>("submit", { prompt: clean });
         setConnection("online");
+        setBackendHealth(true);
         append("assistant", result.answer);
         // Cleared only after a successful send; the sidecar cleared its
         // copy of the same capture.
@@ -244,6 +261,7 @@ export function useSidecar() {
     pending,
     hello,
     connection,
+    backendHealth,
     inFlight,
     captureWindow,
     refreshPending,

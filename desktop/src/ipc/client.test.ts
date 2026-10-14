@@ -11,6 +11,7 @@ import type {
 // (scripts/generate_ipc_fixtures.py). If the Python service's response
 // shapes drift from the TS types, these tests fail.
 import helloFixture from "./fixtures/hello.json";
+import healthFixture from "./fixtures/health-check.json";
 import permissionsFixture from "./fixtures/permissions-status.json";
 import captureStartFixture from "./fixtures/capture-start.json";
 import attachmentGetFixture from "./fixtures/attachment-get.json";
@@ -54,6 +55,15 @@ describe("sidecar client against Python golden fixtures", () => {
       expect(r.config.jpeg_max_bytes).toBe(2_000_000);
     });
     client.handleLine(JSON.stringify(helloFixture));
+    await request;
+  });
+
+  it("parses the health check result", async () => {
+    const { client } = testClient();
+    const request = client.request<{ reachable: boolean }>("health.check", {}, 100).then((r) => {
+      expect(r.reachable).toBe(true);
+    });
+    respond(client, healthFixture, 1);
     await request;
   });
 
