@@ -129,7 +129,10 @@ class CaptureConfig:
     jpeg_max_dimension: int = 2560
     jpeg_max_bytes: int = 2_000_000
     ui_enabled: bool = False
-    ui_timeout_seconds: float = 3.0
+    # Bounds the accessibility probe child process end to end. Must cover
+    # child startup: the PyInstaller sidecar's child re-extracts the bundle
+    # (~2s) before the probe walk begins.
+    ui_timeout_seconds: float = 8.0
     ui_max_nodes: int = 500
     ui_max_depth: int = 20
     ui_max_text_chars: int = 10000

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -49,9 +51,14 @@ def generate() -> None:
     call("attachment-get-empty", 4, "attachment.get")
     call("unknown-method", 5, "nope")
 
-    # capture + attachment: fresh service, successful capture.
-    service, _ = make_service(FakeAdapter())
+    # capture + attachment: fresh service with a gated probe so fixtures are
+    # deterministic — capture-start shows ui "pending", then "complete".
+    adapter = FakeAdapter()
+    adapter.probe_gate = threading.Event()
+    service, _ = make_service(adapter)
     call("capture-start", 5, "capture.start")
+    adapter.probe_gate.set()
+    time.sleep(0.5)
     call("attachment-get", 6, "attachment.get")
 
     # window-identity failure on a fresh capture attempt.

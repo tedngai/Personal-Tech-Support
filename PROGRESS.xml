@@ -59,10 +59,16 @@
         file provisions every user of a machine. First MSI built:
         LabGuide_0.1.0_x64_en-US.msi
         (unsigned). Identity frozen: com.labguide.desktop / LabGuide /
-        labguide-sidecar. Tests: 176 Python + 14 vitest. CSP enabled and
+        labguide-sidecar. Tests: 180 Python + 17 vitest. CSP enabled and
         verified rendering (2026-10-12). Real-keypress hotkey capture
         confirmed. Duplicated-transcript bug (StrictMode double-mount
-        leaking event listeners) fixed. Backend health surfaced in the UI.
+        leaking event listeners) fixed twice: sync registration plus an
+        attach() serialization race. Packaged UIA probe was silently broken
+        (PyInstaller ignores -m); probe children now re-dispatch through the
+        frozen entry. Accessibility extraction moved off the capture path
+        (background merge + attachment.updated event; submit waits bounded)
+        and ui_timeout_seconds default raised to 8s to cover bundled child
+        startup. Backend health surfaced in the UI.
         README/example-config synced for the desktop app. Remaining:
         Authenticode cert + signed MSI, updater wiring,
         macOS bundle/notarization (needs a Mac), MDM confirmation with

@@ -25,7 +25,7 @@ class CaptureConfigTests(unittest.TestCase):
         config = load_config(Path("does-not-exist.toml"))
         capture = config.capture
         self.assertFalse(capture.ui_enabled)
-        self.assertEqual(capture.ui_timeout_seconds, 3.0)
+        self.assertEqual(capture.ui_timeout_seconds, 8.0)
         self.assertEqual(capture.ui_max_nodes, 500)
         self.assertEqual(capture.ui_max_depth, 20)
         self.assertEqual(capture.ui_max_text_chars, 10000)

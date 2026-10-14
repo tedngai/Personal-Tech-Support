@@ -97,6 +97,9 @@ class SidecarService:
 
         self._pending: CapturedScreenshot | None = None
         self._history: list[Message] = []
+        # In-flight background UI probes by capture_id. Entries are removed
+        # when a probe finishes or is awaited.
+        self._probes: dict[str, threading.Event] = {}
 
         self._methods: dict[str, tuple[Callable[[dict[str, Any]], dict[str, Any]], float]] = {
             "hello": (self._hello, _DEFAULT_DEADLINE_SECONDS),
@@ -381,7 +384,7 @@ class SidecarService:
             "width": context.screen_width,
             "height": context.screen_height,
             "target": _target_payload(pending.target),
-            "ui": _ui_payload(pending.ui),
+            "ui": _ui_state(pending),
         }
         return {"pending": True, "attachment": attachment}
 
@@ -404,6 +407,10 @@ class SidecarService:
             used_pending = screenshot is not None
 
         try:
+            if screenshot is not None:
+                # The accessibility probe merges in the background; a send
+                # waits for it (bounded) so UI text still reaches the model.
+                self._await_probe(screenshot)
             result = asyncio.run(
                 self._backend.analyze(
                     message=prompt,
@@ -531,25 +538,60 @@ class SidecarService:
         return hwnd
 
     def _capture_hwnd(self, hwnd: int) -> CapturedScreenshot:
-        """Freeze identity, grab pixels, then probe accessibility.
+        """Freeze identity, grab pixels, start UI extraction in the background.
 
-        Pixels come first because they are time-sensitive; accessibility
-        extraction can be slow. An unexpected probe failure degrades to a
-        screenshot-only capture instead of losing the pixels.
+        Pixels are time-sensitive and land in the pending attachment
+        immediately; the accessibility probe runs in its child process and
+        merges into this same capture when it finishes. Submit waits for the
+        merge (bounded), so a send still carries UI text when the probe
+        succeeds and degrades to screenshot-only when it fails.
         """
         capture_config = self._config.capture
         target = self._adapter.freeze_target(hwnd)
         screenshot = self._adapter.capture_target(target, capture_config)
-        try:
-            ui_snapshot = self._adapter.probe_accessibility(target, capture_config)
-        except Exception:
-            ui_snapshot = UISnapshot(
-                status="failed",
-                warnings=["accessibility probe failed unexpectedly"],
-            )
         screenshot.target = target
-        screenshot.ui = ui_snapshot
+
+        probe_done = threading.Event()
+        self._probes[screenshot.capture_id] = probe_done
+
+        def run_probe() -> None:
+            try:
+                ui_snapshot = self._adapter.probe_accessibility(target, capture_config)
+            except Exception:
+                ui_snapshot = UISnapshot(
+                    status="failed",
+                    warnings=["accessibility probe failed unexpectedly"],
+                )
+            screenshot.ui = ui_snapshot
+            with self._state_lock:
+                self._probes.pop(screenshot.capture_id, None)
+            probe_done.set()
+            self._emit(
+                "attachment.updated",
+                {"capture_id": screenshot.capture_id, "ui": _ui_payload(ui_snapshot)},
+            )
+
+        threading.Thread(
+            target=run_probe, name="labguide-sidecar-probe", daemon=True
+        ).start()
         return screenshot
+
+    def _await_probe(self, screenshot: CapturedScreenshot) -> None:
+        """Wait (bounded) for this capture's background UI probe.
+
+        A send must carry the same UI text as before the probe moved out of
+        the capture path. A probe still running at send time degrades to a
+        screenshot-only attachment instead of blocking the request.
+        """
+        with self._state_lock:
+            probe_done = self._probes.get(screenshot.capture_id)
+        if probe_done is not None:
+            probe_done.wait(timeout=self._config.capture.ui_timeout_seconds + 2.0)
+        if screenshot.ui is None:
+            screenshot.ui = UISnapshot(
+                status="failed",
+                warnings=["accessibility extraction did not finish before send"],
+            )
 
     # ------------------------------------------------------------------
     # Hotkey path (event-driven)
@@ -647,6 +689,24 @@ def _ui_payload(ui: UISnapshot | None) -> dict[str, Any] | None:
     }
 
 
+def _ui_state(screenshot: CapturedScreenshot) -> dict[str, Any] | None:
+    """UI context status for payloads.
+
+    A window capture with no merged UI snapshot yet means the accessibility
+    extraction is still running in the background.
+    """
+    if screenshot.ui is not None:
+        return _ui_payload(screenshot.ui)
+    if screenshot.target is not None:
+        return {
+            "status": "pending",
+            "element_count": 0,
+            "truncated": False,
+            "warnings": [],
+        }
+    return None
+
+
 def _capture_summary(screenshot: CapturedScreenshot) -> dict[str, Any]:
     """Capture metadata for transcript display. Never includes content."""
     summary: dict[str, Any] = {
@@ -655,7 +715,7 @@ def _capture_summary(screenshot: CapturedScreenshot) -> dict[str, Any]:
         "width": screenshot.context.screen_width,
         "height": screenshot.context.screen_height,
         "target": _target_payload(screenshot.target),
-        "ui": _ui_payload(screenshot.ui),
+        "ui": _ui_state(screenshot),
         "warnings": list(screenshot.warnings),
     }
     ui = screenshot.ui

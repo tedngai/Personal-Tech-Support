@@ -24,7 +24,9 @@ jpeg_max_bytes = 2000000
 # attachment. Disabled by default pending privacy review; Ctrl+S
 # primary-display capture always works.
 ui_enabled = false
-ui_timeout_seconds = 3.0
+# Bounds the accessibility probe child process, including child startup
+# (the packaged sidecar's child re-extracts the bundle before probing).
+ui_timeout_seconds = 8.0
 ui_max_nodes = 500
 ui_max_depth = 20
 ui_max_text_chars = 10000

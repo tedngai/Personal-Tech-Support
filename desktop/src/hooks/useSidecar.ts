@@ -61,6 +61,15 @@ export function useSidecar() {
     ]);
   }, []);
 
+  const refreshPending = useCallback(async () => {
+    try {
+      const result = await sidecar.request<AttachmentGetResult>("attachment.get", {}, 15000);
+      setPending(result.attachment);
+    } catch (err) {
+      append("error", `Attachment unavailable: ${formatIpcError(err)}`);
+    }
+  }, [append]);
+
   useEffect(() => {
     let disposed = false;
     let stopped = false;
@@ -92,6 +101,10 @@ export function useSidecar() {
           append("error", (data as CaptureFailedEvent).message);
         } else if (name === "capture.ignored") {
           append("system", (data as CaptureFailedEvent).message);
+        } else if (name === "attachment.updated") {
+          // Background accessibility extraction merged into the pending
+          // attachment; refresh the panel without a new transcript line.
+          void refreshPending();
         } else if (name === "hotkey.pressed") {
           append("system", "Capture hotkey pressed.");
         } else if (name === "degraded") {
@@ -184,7 +197,7 @@ export function useSidecar() {
       offEvent();
       sidecar.detach();
     };
-  }, [append, setConnection]);
+  }, [append, setConnection, refreshPending]);
 
   const captureWindow = useCallback(async () => {
     try {
@@ -247,15 +260,6 @@ export function useSidecar() {
     }
   }, [append]);
 
-  const refreshPending = useCallback(async () => {
-    try {
-      const result = await sidecar.request<AttachmentGetResult>("attachment.get", {}, 15000);
-      setPending(result.attachment);
-    } catch (err) {
-      append("error", `Attachment unavailable: ${formatIpcError(err)}`);
-    }
-  }, [append]);
-
   return {
     messages,
     pending,
@@ -289,6 +293,8 @@ function describeCapture(capture: {
   ];
   if (capture.ui && ["complete", "partial"].includes(capture.ui.status)) {
     parts.push(`${capture.ui.element_count} UI elements${capture.ui.truncated ? ", truncated" : ""}`);
+  } else if (capture.ui?.status === "pending") {
+    parts.push("UI text extracting…");
   } else if (capture.ui) {
     parts.push(`UI text ${capture.ui.status} (screenshot only)`);
   } else {

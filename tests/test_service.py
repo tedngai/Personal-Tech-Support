@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 import time
 import unittest
 from datetime import datetime, timezone
@@ -43,7 +44,7 @@ def make_screenshot(capture_id: str | None = None) -> CapturedScreenshot:
             width=800,
             height=600,
         ),
-        ui=UISnapshot(status="complete"),
+        ui=None,  # accessibility extraction merges in via the probe
     )
     if capture_id is not None:
         shot.capture_id = capture_id
@@ -63,6 +64,8 @@ class FakeAdapter:
         self.freeze_error: WindowIdentityError | None = None
         self.capture_error: CaptureError | None = None
         self.hotkey_error: HotkeyError | None = None
+        self.probe_gate: threading.Event | None = None
+        self.probe_error: Exception | None = None
         self.registered_callback = None
         self.stopped = False
 
@@ -113,6 +116,10 @@ class FakeAdapter:
         return make_screenshot()
 
     def probe_accessibility(self, target, config) -> UISnapshot:
+        if self.probe_gate is not None:
+            self.probe_gate.wait(timeout=10)
+        if self.probe_error is not None:
+            raise self.probe_error
         return UISnapshot(status="complete")
 
 
@@ -208,15 +215,26 @@ class HelloTests(unittest.TestCase):
 
 
 class CaptureTests(unittest.TestCase):
-    def test_capture_start_stores_pending_and_returns_metadata_only(self) -> None:
-        service, _ = make_service(FakeAdapter())
+    def test_capture_start_is_immediate_while_probe_merges_in_background(self) -> None:
+        adapter = FakeAdapter()
+        adapter.probe_gate = threading.Event()  # probe blocked until released
+        service, _ = make_service(adapter)
         response = call(service, 1, "capture.start")
         self.assertTrue(response["result"]["pending"])
         capture = response["result"]["capture"]
         self.assertEqual(capture["target"]["process_name"], "Notepad")
-        self.assertEqual(capture["ui"]["status"], "complete")
+        self.assertEqual(capture["ui"]["status"], "pending")
         # Metadata only: no image bytes ride in responses or events.
         self.assertNotIn("image_base64", json.dumps(response))
+        # Release the probe: it merges into the same capture and emits
+        # attachment.updated for the UI to refresh.
+        adapter.probe_gate.set()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and not _has_event(service, "attachment.updated"):
+            time.sleep(0.02)
+        self.assertTrue(_has_event(service, "attachment.updated"))
+        after = call(service, 2, "attachment.get")
+        self.assertEqual(after["result"]["attachment"]["ui"]["status"], "complete")
 
     def test_attachment_get_returns_image_exactly_once_requested(self) -> None:
         service, _ = make_service(FakeAdapter())
@@ -269,6 +287,30 @@ class CaptureTests(unittest.TestCase):
         response = call(service, 1, "capture.start", {"mode": "below"})
         self.assertTrue(response["result"]["pending"])
         self.assertIsNone(response["result"]["capture"]["target"])
+
+    def test_probe_failure_degrades_to_screenshot_only(self) -> None:
+        adapter = FakeAdapter()
+        adapter.probe_error = RuntimeError("uia provider died")
+        service, _ = make_service(adapter)
+        call(service, 1, "capture.start")
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and not _has_event(service, "attachment.updated"):
+            time.sleep(0.02)
+        after = call(service, 2, "attachment.get")
+        self.assertEqual(after["result"]["attachment"]["ui"]["status"], "failed")
+
+    def test_submit_waits_for_inflight_probe_and_sends_ui_text(self) -> None:
+        adapter = FakeAdapter()
+        adapter.probe_gate = threading.Event()
+        backend = FakeBackend()
+        service, _ = make_service(adapter, backend)
+        call(service, 1, "capture.start")
+        # The probe finishes while the submit is in flight.
+        threading.Timer(0.3, adapter.probe_gate.set).start()
+        response = call(service, 2, "submit", {"prompt": "what is this"}, timeout=10)
+        self.assertEqual(response["result"]["answer"], "try restarting")
+        sent = backend.calls[0]["screenshot"]
+        self.assertEqual(sent.ui.status, "complete")
 
 
 class SubmitTests(unittest.TestCase):
@@ -376,7 +418,11 @@ class HotkeyEventTests(unittest.TestCase):
         while time.monotonic() < deadline and not _has_event(service, "capture.completed"):
             service.pump(timeout=0.05)
         events = output_lines(service)
-        names = [p["event"] for p in events if "event" in p]
+        names = [
+            p["event"]
+            for p in events
+            if "event" in p and p["event"] != "attachment.updated"
+        ]
         self.assertEqual(names, ["hotkey.pressed", "capture.completed"])
         completed = next(p for p in events if p.get("event") == "capture.completed")
         self.assertEqual(completed["data"]["capture"]["target"]["process_name"], "Notepad")

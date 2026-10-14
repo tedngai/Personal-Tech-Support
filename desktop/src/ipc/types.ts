@@ -144,4 +144,5 @@ export type SidecarEventName =
   | "capture.completed"
   | "capture.failed"
   | "capture.ignored"
+  | "attachment.updated"
   | "degraded";

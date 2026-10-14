@@ -96,7 +96,7 @@ describe("sidecar client against Python golden fixtures", () => {
       .then((r) => {
         expect(r.pending).toBe(true);
         expect(r.capture.target?.process_name).toBe("Notepad");
-        expect(r.capture.ui?.status).toBe("complete");
+        expect(r.capture.ui?.status).toBe("pending");
         expect(r.capture.byte_count).toBeGreaterThan(0);
       });
     respond(client, captureStartFixture, 1);

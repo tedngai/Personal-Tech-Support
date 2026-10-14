@@ -27,7 +27,9 @@ export function PendingCapturePanel({ attachment, disabled, onDiscard }: Pending
           {Math.round(attachment.byte_count / 1024)}KB
           {attachment.ui && ["complete", "partial"].includes(attachment.ui.status)
             ? ` · ${attachment.ui.element_count} UI elements`
-            : " · screenshot only"}
+            : attachment.ui?.status === "pending"
+              ? " · UI text extracting…"
+              : " · screenshot only"}
         </div>
       </div>
       <button
