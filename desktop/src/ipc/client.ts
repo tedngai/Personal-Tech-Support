@@ -27,6 +27,8 @@ export class SidecarClient {
   private unlistenLine: UnlistenFn | null = null;
   private unlistenShell: UnlistenFn | null = null;
   private attached = false;
+  private attachPromise: Promise<void> | null = null;
+  private generation = 0;
 
   constructor(
     private readonly sendLine: (line: string) => void | Promise<void> = (line) =>
@@ -34,26 +36,48 @@ export class SidecarClient {
   ) {}
 
   /** Begin consuming `sidecar-line` and `sidecar-event` events. Idempotent. */
-  async attach(): Promise<void> {
-    if (this.attached) return;
-    this.unlistenLine = await listen<string>("sidecar-line", (event) => {
-      this.handleLine(event.payload);
-    });
-    // Shell diagnostics (spawn failures, terminations, sidecar stderr).
-    // Dispatched under a reserved name so consumers can distinguish them
-    // from sidecar protocol events.
-    this.unlistenShell = await listen<unknown>("sidecar-event", (event) => {
-      this.dispatch("shell.event", event.payload);
-    });
-    this.attached = true;
+  attach(): Promise<void> {
+    if (this.attached) return Promise.resolve();
+    // Serialize concurrent attaches: under StrictMode's mount/cleanup/mount,
+    // two overlapping attach() calls would both pass the `attached` guard
+    // (it flips only after the awaits) and leak a duplicate line listener —
+    // every event then dispatches twice. One shared promise plus a
+    // generation check makes detach always win over an in-flight attach.
+    if (!this.attachPromise) {
+      const generation = this.generation;
+      this.attachPromise = (async () => {
+        const unlistenLine = await listen<string>("sidecar-line", (event) => {
+          this.handleLine(event.payload);
+        });
+        // Shell diagnostics (spawn failures, terminations, sidecar stderr).
+        // Dispatched under a reserved name so consumers can distinguish them
+        // from sidecar protocol events.
+        const unlistenShell = await listen<unknown>("sidecar-event", (event) => {
+          this.dispatch("shell.event", event.payload);
+        });
+        if (generation !== this.generation) {
+          // Detached while attaching: never leak a half-registered listener.
+          unlistenLine();
+          unlistenShell();
+          return;
+        }
+        this.unlistenLine = unlistenLine;
+        this.unlistenShell = unlistenShell;
+        this.attached = true;
+      })();
+    }
+    return this.attachPromise;
   }
 
   detach(): void {
+    // Invalidate any in-flight attach() before tearing down.
+    this.generation += 1;
     this.unlistenLine?.();
     this.unlistenLine = null;
     this.unlistenShell?.();
     this.unlistenShell = null;
     this.attached = false;
+    this.attachPromise = null;
     // Stale listeners must not survive a detach: a second mount would then
     // receive every event twice (observed as duplicated transcript lines).
     this.eventListeners.clear();

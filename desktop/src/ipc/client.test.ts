@@ -7,6 +7,17 @@ import type {
   SubmitResult,
 } from "./types";
 
+// Tauri's event layer is mocked: these tests exercise listener lifecycle.
+const counters = vi.hoisted(() => ({ listenCalls: 0, unlistenCalls: 0 }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => {
+    counters.listenCalls += 1;
+    return Promise.resolve(() => {
+      counters.unlistenCalls += 1;
+    });
+  }),
+}));
+
 // Golden fixtures generated from the Python sidecar's contract tests
 // (scripts/generate_ipc_fixtures.py). If the Python service's response
 // shapes drift from the TS types, these tests fail.
@@ -191,5 +202,38 @@ describe("sidecar client against Python golden fixtures", () => {
       "degraded",
       expect.objectContaining({ reason: "protocol" })
     );
+  });
+});
+
+describe("attach lifecycle (StrictMode double-mount safety)", () => {
+  it("concurrent attach calls register exactly one listener pair", async () => {
+    const before = counters.listenCalls;
+    const client = new SidecarClient(() => {});
+    await Promise.all([client.attach(), client.attach()]);
+    // One line listener + one shell listener, never doubled.
+    expect(counters.listenCalls - before).toBe(2);
+    client.detach();
+  });
+
+  it("detach racing an in-flight attach leaves no listener behind", async () => {
+    const beforeListen = counters.listenCalls;
+    const beforeUnlisten = counters.unlistenCalls;
+    const client = new SidecarClient(() => {});
+    const pending = client.attach();
+    client.detach(); // runs before the attach awaits resolve
+    await pending;
+    expect(counters.listenCalls - beforeListen).toBe(2);
+    // Both half-registered listeners must be unlistened by the loser.
+    expect(counters.unlistenCalls - beforeUnlisten).toBe(2);
+  });
+
+  it("detach then re-attach works and stays single", async () => {
+    const before = counters.listenCalls;
+    const client = new SidecarClient(() => {});
+    await client.attach();
+    client.detach();
+    await client.attach();
+    expect(counters.listenCalls - before).toBe(4);
+    client.detach();
   });
 });
