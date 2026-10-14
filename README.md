@@ -1,53 +1,67 @@
-# Pratt Lab Guide — your lab computer's fix-it buddy 🛠️
+# Personal Tech Support
 
-> Stuck on a weird error right before your deadline? Don't copy-paste the error code into Google for the 10th time — just *show* LabGuide what's on your screen and ask.
+> An AI-powered desktop assistant for instant, context-aware technical support — show it what you see, and get clear next steps.
 
-LabGuide is a small desktop + terminal app that helps you troubleshoot lab computers. You capture the broken window (or your whole screen), type "why won't this print??" and get back short, step-by-step help from an AI vision model. It runs on Windows and macOS, works with the Pratt AI backend, and never sends anything until *you* hit send.
+Personal Tech Support streamlines troubleshooting for everyday software issues. Capture any application window, add a brief description, and receive concise, actionable guidance from your configured vision-language model. Built for Windows and macOS, it runs locally, integrates with any OpenAI-compatible backend, and ensures no data is transmitted until you explicitly send it.
 
-**Perfect for:** students in Pratt labs, TAs on help-desk duty, and anyone tired of "have you tried turning it off and on again?"
-
----
-
-## ✨ What it actually does
-
-- **📸 Show, don't tell** — Click *Capture window…*, pick the broken app from a thumbnail grid, and LabGuide grabs that window *even if it's buried under other windows*. No more cropping screenshots.
-- **🔍 Reads the fine print for you** — It pulls the real text from buttons, error codes, and dialogs (not just pixels), so you get exact answers.
-- **💬 Just chat** — Type your question, hit Enter, get a markdown answer. Your history stays in the app while it's open.
-- **🔒 You stay in control** — Capturing saves it locally. Nothing is sent until you explicitly hit Send. Passwords are always redacted.
-
-> Prefer the terminal? Same brain, Textual TUI version included (`python -m labGuide`).
+Designed for individual productivity and enterprise support workflows where accuracy, privacy, and deployment at scale matter.
 
 ---
 
-## 🚀 Get it in 2 minutes
+## Key Capabilities
 
-### Option A: Desktop app (recommended)
+- **Context-Aware Window Capture** — Select any window from a visual thumbnail grid. The application captures the target window directly, even when it is obscured by other windows, eliminating manual cropping.
+- **Accurate Text Extraction** — Retrieves exact labels, error codes, field values, and control states via native accessibility APIs (Windows UI Automation / macOS AX), rather than relying on OCR.
+- **Conversational Assistance** — Chat-based interface with multi-turn history and markdown-formatted responses. Pending captures are managed explicitly and attached automatically on send.
+- **Privacy by Design** — All captures remain local until submission. Password fields are automatically redacted, and no prompts, screenshots, or window content are written to logs.
+- **Enterprise Ready** — Layered configuration, machine-wide deployment support, system tray integration, and single-instance enforcement for managed environments.
+- **Flexible Deployment** — Available as a Tauri-based desktop application (recommended) with a Textual-based terminal interface included for development and lightweight use.
 
-1. **Install** `LabGuide_0.1.0_x64_en-US.msi` (double-click → *More info → Run anyway* if Windows warns — it's unsigned for now).
+---
 
-2. **Add your config** — pick one:
+## System Requirements
+
+- Python 3.10+
+- Windows 11 or macOS 14+
+- Network access to an OpenAI-compatible backend
+- A vision-capable model for screenshot-assisted troubleshooting
+- **macOS additional setup:** Screen Recording permission (screenshots) and Accessibility permission (global hotkey and text extraction) granted to the host application
+
+---
+
+## Installation
+
+### Desktop Application (Recommended)
+
+1. Install `LabGuide_0.1.0_x64_en-US.msi`.
+
+2. Provision the configuration file. Choose one:
 
    ```powershell
-   # For everyone on this computer (needs admin, once):
+   # Machine-wide — applies to all users on the device (requires administrator):
    New-Item -ItemType Directory -Force C:\ProgramData\LabGuide
    Copy-Item labguide.toml C:\ProgramData\LabGuide\labguide.toml
 
-   # Or just for you (no admin):
+   # Per-user — no administrator privileges required:
    New-Item -ItemType Directory -Force $env:APPDATA\LabGuide
    Copy-Item labguide.toml $env:APPDATA\LabGuide\labguide.toml
    ```
 
-   > Don't have a `labguide.toml` yet? `Copy-Item labguide.example.toml labguide.toml` and edit it.
+   If you do not have a configuration file, create one from the example:
+   ```powershell
+   Copy-Item labguide.example.toml labguide.toml
+   ```
 
-3. **Open LabGuide** from the Start Menu and you're in. It should say `online · model pratt-agent` at the top.
+3. Launch **LabGuide** from the Start Menu. The header should display `online`.
 
-For devs:
+For development:
+
 ```powershell
 cd desktop
 npm run tauri dev
 ```
 
-### Option B: Terminal version
+### Terminal Interface
 
 ```powershell
 python -m venv .venv
@@ -59,60 +73,59 @@ labguide          # or: python -m labguide
 
 ---
 
-## 🎮 How to use it (30 seconds)
+## Usage
 
-| What you do | What happens |
+1. **Capture** — Click **Capture window…** and select the target application, or press **Ctrl+Shift+Space** while the affected application is in the foreground. Use **Capture screen** for a full-display capture when needed.
+
+2. **Describe** — Enter a concise description of the issue. The pending capture thumbnail will appear above the composer and will be attached automatically.
+
+3. **Send and Resolve** — Press **Enter** to submit. Responses are returned as structured, actionable steps. Use **Discard** to remove the pending capture or **Clear conversation** to reset history.
+
+**Desktop Controls**
+
+| Action | Shortcut / Control |
 |---|---|
-| **1. Break something** | Photoshop crashes. Printer says `0x6100004a`. You know the drill. |
-| **2. Capture** | Click **Capture window…** → pick the broken app → see the thumbnail appear. Or press **Ctrl+Shift+Space** while the broken app is in front. |
-| **3. Ask** | Type "why is this happening and how do I fix it?" → **Enter**. The pending screenshot is attached automatically. |
-| **4. Fix & repeat** | Follow the steps. `Discard` the screenshot if you don't need it, or just keep chatting. |
+| Send message | `Enter` |
+| New line | `Shift+Enter` |
+| Capture window | `Capture window…` button |
+| Capture screen | `Capture screen` button |
+| Global capture | `Ctrl+Shift+Space` (configurable) |
+| Discard pending capture | `Discard` button |
+| Clear conversation | `Clear conversation` button |
+| Restore window | Tray icon click |
 
-**Desktop controls:**
+**Terminal Controls**
 
-- `Enter` to send, `Shift+Enter` for a new line
-- `Capture window…` = pick a window (minimized ones are hidden on purpose)
-- `Capture screen` = whole display
-- `Ctrl+Shift+Space` = global hotkey (works even when LabGuide is in the background)
-- Tray icon → click to bring LabGuide back
+`Enter` to send, `Shift+Enter` / `Alt+Enter` / `Ctrl+J` for new line, `Ctrl+S` to capture the window below the terminal, `Ctrl+Shift+Space` for global capture, `Ctrl+Shift+D` to discard, `Ctrl+L` to clear, `Ctrl+C` to exit.
 
-**TUI controls:** `Ctrl+S` captures the window *below* the terminal, same hotkey works, `Ctrl+Shift+D` discards, `Ctrl+L` clears.
-
-That's it. No account, no cloud sync.
+Pending captures are replaced upon successful capture, retained on send failure, and cleared only after a successful submission where no newer capture has been created.
 
 ---
 
-## ⚙️ Configuration — where do I put stuff?
+## Configuration
 
-You edit one file: `labguide.toml`. Copy the example and fill in your backend:
+All settings are managed through `labguide.toml`. An API key may be provided in the file or via the `LABGUIDE_API_KEY` environment variable. The repository does not commit credentials.
 
-```powershell
-Copy-Item labguide.example.toml labguide.toml
-# then open labguide.toml in Notepad/VS Code
-```
+**Configuration resolution order (first existing file wins; machine-wide settings take precedence per key):**
 
-**Where LabGuide looks (first file that exists wins, machine-wide wins per-setting):**
-
-1. `LABGUIDE_CONFIG` env var — if you set it, that's the file
-2. **Machine-wide:** `C:\ProgramData\LabGuide\labguide.toml` (Windows) or `/Library/Application Support/LabGuide/labguide.toml` (macOS) — *this wins for every user on that machine*
-3. **Your stuff:** `labguide.toml` next to where you run it, or `%APPDATA%\LabGuide\labguide.toml`
+1. Path specified by `LABGUIDE_CONFIG` environment variable
+2. Machine-wide: `C:\ProgramData\LabGuide\labguide.toml` (Windows) / `/Library/Application Support/LabGuide/labguide.toml` (macOS)
+3. User/local: `labguide.toml` in the current directory, adjacent to the executable, or `%APPDATA%\LabGuide\labguide.toml`
 4. Built-in defaults
 
-Put your API key in the file (`api_key = "..."`) or as `LABGUIDE_API_KEY` env var. Never commit it.
-
 <details>
-<summary><b>Full example config (click to expand)</b></summary>
+<summary><strong>Example configuration</strong></summary>
 
 ```toml
 [backend]
 base_url = "https://your-backend.example/v1"
-model = "pratt-agent"
+model = "your-vision-model"
 api_key = ""
 timeout_seconds = 30.0
 
 [capture]
 jpeg_quality = 80
-ui_enabled = false          # true = also grab accessibility text (labels, errors)
+ui_enabled = false          # true to include accessibility text
 ui_timeout_seconds = 8.0
 global_hotkey = "ctrl+shift+space"
 
@@ -121,93 +134,108 @@ max_history_turns = 6
 log_path = "logs/labguide-session.jsonl"
 ```
 
-See `labguide.example.toml` for all options with comments.
+Refer to `labguide.example.toml` for the complete annotated example.
+
 </details>
 
-Need richer captures? Set `ui_enabled = true` in your toml. It grabs the exact dialog text + button states, still as text — not a guess from pixels.
+Enable enriched captures by setting `ui_enabled = true` to include structured accessibility text (labels, values, control states) alongside the screenshot. This data is provided as text — no inference from pixels — and remains subject to password redaction.
 
 ---
 
-## 🧠 How it works (the 10-second version)
+## How It Works
 
-1. You hit capture → LabGuide freezes that window's identity and grabs its pixels (with `PrintWindow` so covered windows still work).
-2. In the background it asks Windows/macOS "what text is in this window?" via accessibility APIs — totally read-only, in a separate process so a frozen app can't freeze LabGuide.
-3. When you hit Send, it sends *one* compact message: screenshot + a tiny text outline of the UI (marked as untrusted data so the AI can't be tricked by text *inside* your screenshot).
+1. **Capture** — The application identifies the target window and acquires its pixel data using native windowing APIs. Window-level capture remains accurate even when the target is obscured.
+2. **Context Extraction** — A separate, time-bounded process retrieves accessibility information via platform APIs (UI Automation on Windows, AXUIElement on macOS). The operation is read-only and isolated to ensure the main application remains responsive.
+3. **Submission** — Upon explicit user action, a single compact request containing the screenshot and a text projection of the UI is sent to the configured OpenAI-compatible endpoint. When no screenshot is attached, a text-only prompt is used.
+4. **Response and Logging** — The response is rendered in the transcript. A local JSONL log records operational metadata only — latency, success status, and error categories.
 
 <details>
-<summary><b>Nerdy details for the curious</b></summary>
+<summary><strong>Technical details</strong></summary>
 
-- Frontend: Tauri 2 + React (desktop) + Textual TUI fallback
-- Backend: any OpenAI-compatible `/v1/chat/completions` + `/v1/models` health check
-- Image handling: JPEG bounded by dimension & byte size before sending; responses capped at 8 MB
-- Accessibility: Windows UIA / macOS AXUIElement, isolated child process + hard timeout, password fields redacted
-- Platform adapters live in `src/labguide/platforms/` — OS calls never leak into the app
-- Session log is local JSONL with *only* metadata (no prompts, screenshots, or window titles)
+- Frontend: Tauri 2 + React (desktop) with Textual TUI fallback
+- Backend: OpenAI-compatible `/v1/chat/completions` and `/v1/models` (health check)
+- Image handling: JPEG encoding with configurable dimension and byte limits; response bodies capped at 8 MB
+- Platform layer: Isolated accessibility adapters in `src/labguide/platforms/` with lazy imports for OS-specific dependencies
+- Session logging: Local JSONL, metadata only
 
 </details>
 
 ---
 
-## 🗂️ Project structure (for contributors)
+## Project Structure
 
 ```text
-src/labguide/        # Python core: capture, backend client, config, sidecar
-  service/           # JSON-RPC sidecar (what the desktop app talks to)
-  platforms/         # windows/ + macos/ adapters
-tests/               # pure unit tests — no display needed
-desktop/             # Tauri + React app (tray, picker, sidecar supervision)
-scripts/             # sidecar build + fixture generation
-docs/                # architecture & execution plans
-PROGRESS.xml         # machine-readable status (start here if you're picking up work)
+src/labguide/        # Core Python package: capture, backend client, configuration, sidecar
+  service/           # JSON-RPC sidecar service
+  platforms/         # windows/ and macos/ adapters
+tests/               # Unit tests (no display required)
+desktop/             # Tauri + React desktop application
+scripts/             # Sidecar build and fixture generation
+docs/                # Architecture and execution plans
+PROGRESS.xml         # Machine-readable project status
 ```
 
 ---
 
-## 🧪 For developers
+## Development
 
 ```bash
-# Python tests (no display needed)
+# Python unit tests
 python -m unittest discover -s tests
 
 # Frontend tests
 cd desktop && npm test
 
-# Desktop dev
+# Desktop development
 cd desktop && npm run tauri dev
 
-# TUI probes
+# Platform probes
 python -m labguide.ui_probe --help
 python -m labguide.platforms.macos.ax_probe --help
 ```
 
-> **Status & next steps live in `PROGRESS.xml` and `docs/Desktop-App-Migration-Plan.md`.** Phase 2 (desktop app shell) is done and verified live; next is the Windows acceptance matrix, signing the MSI, and fleet/MDM rollout.
+Current status and next steps are tracked in `PROGRESS.xml` and `docs/Desktop-App-Migration-Plan.md`.
 
 ---
 
-## 🆘 Something broke?
+## Troubleshooting
 
-**Red banner "Capture service unavailable"?** `labguide-sidecar.exe` needs to sit next to `LabGuide.exe` — the installer does this. Try running it directly:
+**Desktop app displays "Capture service unavailable"**
+
+Ensure `labguide-sidecar.exe` is located alongside `LabGuide.exe` (handled automatically by the installer). To diagnose:
 
 ```powershell
 '{"id":1,"method":"hello"}' | & "C:\Program Files\LabGuide\labguide-sidecar.exe"
 ```
 
-If that prints JSON, the service is fine — restart LabGuide.
+A healthy service returns a JSON response; startup errors are written to stderr.
 
-**"Backend unreachable"?** Check `base_url` in your toml and that the backend is up. Health check is `GET /v1/models`.
+**Backend unreachable**
 
-**Hotkey does nothing?** Another app owns `ctrl+shift+space` — change `global_hotkey` in your toml, or grant **Accessibility** permission on macOS (System Settings → Privacy & Security).
+Verify `base_url`, `models_path`, and `chat_path` in your configuration. Confirm the backend is reachable and that the configured model is listed via `GET /v1/models`.
 
-**Slow first capture?** The accessibility probe starts a helper process on first use (~1-2s). Subsequent captures are instant.
+**Screenshot transmission failures**
 
-**macOS permission woes?** Screen Recording (for screenshots) + Accessibility (for hotkey & text) are per-terminal-app. Grant them to your Terminal, then restart it.
+Confirm the model supports image input. Reduce `jpeg_quality` if payload size is constrained. Test with a text-only message first. The client requests identity encoding and handles mislabeled gzip responses automatically.
 
-Still stuck? Open an issue or ping a TA with your `labguide.toml` (with the key redacted!) and the error text.
+**Authentication failures**
+
+Set `backend.api_key` in `labguide.toml` or export `LABGUIDE_API_KEY`. Do not commit credentials.
+
+**Capture issues (`ui_enabled = true`)**
+
+- *Hotkey unavailable:* Another application has registered the chord. Update `global_hotkey` in your configuration. On macOS, verify Accessibility permission for the host application.
+- *Capture ignored:* The global hotkey must be triggered while the target application is in the foreground.
+- *UI text unavailable (timed_out / unsupported / inaccessible):* The screenshot is still transmitted. Elevated applications cannot be inspected from a non-elevated context; certain Electron, browser, and GPU-rendered applications expose limited accessibility trees.
+- *Slow initial capture:* The accessibility helper initializes on first use. Subsequent captures are immediate. Adjust `ui_timeout_seconds` if needed.
+
+**macOS Permissions**
+
+- **Screen Recording** (System Settings → Privacy & Security → Screen Recording) — Required for captures. Grant to the terminal or application running LabGuide and restart it.
+- **Accessibility** — Required for the global hotkey and accessibility text extraction. Screenshot-only capture remains functional without it.
 
 ---
 
-## 📄 License
+## License
 
 MIT — see `LICENSE`.
-
-*Built for Pratt labs, by Pratt labs. PRs welcome — especially from students who've actually had to fix the lab printer at 11pm.*
