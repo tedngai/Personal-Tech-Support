@@ -323,19 +323,12 @@ def run_ui_probe(
     if sys.platform != "win32":
         return UISnapshot(status=UI_STATUS_UNSUPPORTED, warnings=["UIA probe requires Windows"])
 
-    command = [
-        sys.executable,
-        "-m",
-        "labguide.ui_probe",
-        "--hwnd",
-        str(hwnd),
-        "--max-nodes",
-        str(max_nodes),
-        "--max-depth",
-        str(max_depth),
-    ]
-    if include_offscreen:
-        command.append("--include-offscreen")
+    command = _probe_command(
+        hwnd,
+        max_nodes=max_nodes,
+        max_depth=max_depth,
+        include_offscreen=include_offscreen,
+    )
 
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
@@ -377,6 +370,32 @@ def run_ui_probe(
         return UISnapshot(status=UI_STATUS_FAILED, warnings=["UI probe returned unexpected output"])
 
     return redact_password_elements(UISnapshot.from_dict(payload))
+
+
+def _probe_command(
+    hwnd: int, *, max_nodes: int, max_depth: int, include_offscreen: bool
+) -> list[str]:
+    """Child command for the probe process.
+
+    A PyInstaller bundle ignores `-m` and re-runs its entry point with any
+    arguments, so the frozen sidecar re-dispatches `--ui-probe` to the probe
+    CLI at startup. Running under a real interpreter keeps the `-m` form.
+    """
+    if getattr(sys, "frozen", False):
+        base = [sys.executable, "--ui-probe"]
+    else:
+        base = [sys.executable, "-m", "labguide.ui_probe"]
+    command = base + [
+        "--hwnd",
+        str(hwnd),
+        "--max-nodes",
+        str(max_nodes),
+        "--max-depth",
+        str(max_depth),
+    ]
+    if include_offscreen:
+        command.append("--include-offscreen")
+    return command
 
 
 def _build_parser() -> argparse.ArgumentParser:
